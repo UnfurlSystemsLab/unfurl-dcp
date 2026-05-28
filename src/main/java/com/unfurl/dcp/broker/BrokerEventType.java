@@ -1,0 +1,10 @@
+package com.unfurl.dcp.broker;
+
+public enum BrokerEventType {
+    CLAIM_PRESENTED,
+    DISPOSITION_ACCEPTED,
+    DISPOSITION_REFUSED,
+    CAPABILITY_REGISTERED,
+    CAPABILITY_REVOKED,
+    CONTRACT_INVALIDATED
+}
