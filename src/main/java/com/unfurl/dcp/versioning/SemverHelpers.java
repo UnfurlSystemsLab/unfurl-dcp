@@ -47,6 +47,10 @@ public final class SemverHelpers {
         }
         return versions.stream()
                 .filter(version -> satisfies(version, range))
-                .max(Comparator.comparing(version -> new Semver(version, Semver.SemverType.LOOSE)));
+                .max(semverComparator());
+    }
+
+    public Comparator<String> semverComparator() {
+        return Comparator.comparing(version -> new Semver(version, Semver.SemverType.LOOSE));
     }
 }

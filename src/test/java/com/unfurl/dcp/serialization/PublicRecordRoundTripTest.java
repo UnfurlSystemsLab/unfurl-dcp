@@ -1,0 +1,85 @@
+package com.unfurl.dcp.serialization;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.unfurl.dcp.contract.ContractCodec;
+import com.unfurl.dcp.manifest.*;
+import com.unfurl.dcp.questions.NegotiationQuestionSchema;
+import com.unfurl.dcp.runtimebinding.*;
+import com.unfurl.dcp.testing.Fixtures;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.net.URI;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class PublicRecordRoundTripTest {
+    private static final ObjectMapper JSON = ContractCodec.canonicalMapper();
+    private static final ObjectMapper YAML = yamlMapper();
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("records")
+    void publicRecordsRoundTripJsonAndYaml(String name, Object value, Class<?> type) throws Exception {
+        Object fromJson = JSON.readValue(JSON.writeValueAsString(value), type);
+        Object fromYaml = YAML.readValue(YAML.writeValueAsString(value), type);
+
+        assertThat(fromJson).isEqualTo(value);
+        assertThat(fromYaml).isEqualTo(value);
+    }
+
+    static Stream<org.junit.jupiter.params.provider.Arguments> records() {
+        return Stream.of(
+                org.junit.jupiter.params.provider.Arguments.of("Claim", Fixtures.validProviderClaim(), com.unfurl.dcp.claim.Claim.class),
+                org.junit.jupiter.params.provider.Arguments.of("CompositionContract", Fixtures.validContract(), com.unfurl.dcp.contract.CompositionContract.class),
+                org.junit.jupiter.params.provider.Arguments.of("WebappManifest", manifest(), WebappManifest.class),
+                org.junit.jupiter.params.provider.Arguments.of("RuntimeBinding", runtimeBinding(), RuntimeBinding.class),
+                org.junit.jupiter.params.provider.Arguments.of("NegotiationQuestionSchema", NegotiationQuestionSchema.CANONICAL_V0_2, NegotiationQuestionSchema.class)
+        );
+    }
+
+    private static WebappManifest manifest() {
+        return new WebappManifest(
+                URI.create("urn:provider"),
+                "1.0.0",
+                "/",
+                List.of(new Route("/", "answers")),
+                new Navigation(List.of("Home")),
+                List.of("capability:answer.search", "concern:answers"),
+                new ThemeContribution(ThemeMode.SUGGESTIVE, Map.of("accent", "#123456")),
+                new Bootstrap(false, true));
+    }
+
+    private static RuntimeBinding runtimeBinding() {
+        return new RuntimeBinding(
+                URI.create("urn:binding"),
+                URI.create("urn:contract"),
+                "1.0.0",
+                new TargetEnvironment("test"),
+                new ProviderInstance(URI.create("urn:provider"), "1.0.0", "provider", DeploymentKind.IN_PROCESS, null, new ConfigRef("config://base-url"), new SecretRef("secret://provider")),
+                new ConsumerInstance(URI.create("urn:consumer"), "1.0.0", "consumer"),
+                new RuntimePolicy(true, 1000, "test", true),
+                new Configuration(Map.of("setting", "value")),
+                new DeploymentControls(Map.of("replicas", 1)),
+                new Lifecycle(true));
+    }
+
+    private static ObjectMapper yamlMapper() {
+        return YAMLMapper.builder()
+                .addModule(new JavaTimeModule())
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .serializationInclusion(JsonInclude.Include.NON_NULL)
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                .build();
+    }
+}

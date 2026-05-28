@@ -1,12 +1,10 @@
 package com.unfurl.dcp.resolver;
 
 import com.unfurl.dcp.claim.Claim;
-import com.unfurl.dcp.claim.ConsumerAccess;
 import com.unfurl.dcp.claim.Offer;
 import com.unfurl.dcp.validation.ErrorCode;
 import com.unfurl.dcp.versioning.SemverHelpers;
 
-import java.util.Comparator;
 import java.util.Objects;
 
 public final class CapabilityResolver {
@@ -21,8 +19,8 @@ public final class CapabilityResolver {
                 .flatMap(claim -> claim.offers().stream().map(offer -> new Candidate(claim, offer)))
                 .filter(candidate -> Objects.equals(candidate.offer.capability(), request.need()))
                 .filter(candidate -> semver.satisfies(candidate.offer.version(), range))
-                .filter(candidate -> candidate.offer.consumerAccess() == ConsumerAccess.ANY)
-                .max(Comparator.comparing(candidate -> candidate.offer.version()))
+                .filter(candidate -> accessPolicy(candidate.offer, request).allows(request.consumerClaimUri()))
+                .max((left, right) -> semver.semverComparator().compare(left.offer.version(), right.offer.version()))
                 .map(candidate -> new ResolutionResult(
                         true,
                         candidate.claim.identity().uri(),
@@ -30,6 +28,10 @@ public final class CapabilityResolver {
                         candidate.offer.version(),
                         "MATCH_FOUND"))
                 .orElseGet(() -> ResolutionResult.unresolved(ErrorCode.NO_MATCHING_CONTRACT.name()));
+    }
+
+    private AccessPolicy accessPolicy(Offer offer, ResolutionRequest request) {
+        return request.accessPoliciesByCapability().getOrDefault(offer.capability(), new AccessPolicy(offer.consumerAccess(), java.util.Set.of()));
     }
 
     private record Candidate(Claim claim, Offer offer) {

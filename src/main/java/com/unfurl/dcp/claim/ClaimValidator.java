@@ -46,7 +46,9 @@ public final class ClaimValidator {
         if (claim.metadata() == null) {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "metadata is required", "metadata"));
         } else {
-            if (!semver.satisfies(claim.metadata().dcpVersion(), ">=0.2.0")) {
+            if (claim.metadata().dcpVersion() == null || claim.metadata().dcpVersion().isBlank()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "metadata.dcp_version is required", "metadata.dcp_version"));
+            } else if (!semver.satisfies(claim.metadata().dcpVersion(), ">=0.2.0")) {
                 diagnostics.add(Diagnostic.error(ErrorCode.DCP_VERSION_UNSUPPORTED, "metadata.dcp_version must be >= 0.2.0", "metadata.dcp_version"));
             }
             if (claim.identity() != null && !Objects.equals(claim.identity().version(), claim.metadata().claimVersion())) {

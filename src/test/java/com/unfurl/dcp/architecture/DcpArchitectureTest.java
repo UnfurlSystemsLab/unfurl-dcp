@@ -35,4 +35,50 @@ class DcpArchitectureTest {
                     "com.unfurl.flow..",
                     "com.unfurl.foundry..",
                     "com.unfurl.fabric..");
+
+    @ArchTest
+    static final ArchRule design_time_and_schema_packages_do_not_import_broker_or_spi =
+            noClasses().that().resideInAnyPackage(
+                            "..description..",
+                            "..claim..",
+                            "..manifest..",
+                            "..runtimebinding..",
+                            "..questions..",
+                            "..resolver..",
+                            "..versioning..",
+                            "..validation..")
+                    .should().dependOnClassesThat().resideInAnyPackage("..broker..", "..spi..");
+
+    @ArchTest
+    static final ArchRule no_forbidden_runtime_or_sdk_dependencies =
+            noClasses().should().dependOnClassesThat().resideInAnyPackage(
+                    "org.springframework..",
+                    "jakarta.ws.rs..",
+                    "javax.ws.rs..",
+                    "java.net.http..",
+                    "okhttp3..",
+                    "org.apache.http..",
+                    "java.sql..",
+                    "javax.sql..",
+                    "jakarta.persistence..",
+                    "software.amazon.awssdk..",
+                    "com.amazonaws..",
+                    "com.google.cloud..",
+                    "com.azure..",
+                    "com.openai..",
+                    "ai.openai..",
+                    "io.opentelemetry..",
+                    "io.micrometer..",
+                    "org.slf4j..");
+
+    @ArchTest
+    static final ArchRule no_substrate_engine_dependency =
+            noClasses().should().dependOnClassesThat().resideInAnyPackage(
+                    "com.unfurl.substrate.engine..",
+                    "com.unfurl.substrate.resolver..",
+                    "com.unfurl.substrate.conditions..",
+                    "com.unfurl.substrate.serialization..",
+                    "com.unfurl.substrate.componentmodel..",
+                    "com.unfurl.substrate.domain..",
+                    "com.unfurl.substrate.events..");
 }

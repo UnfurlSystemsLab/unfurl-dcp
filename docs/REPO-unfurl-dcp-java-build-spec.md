@@ -21,6 +21,7 @@
 - A structural resolver for `need -> capability` binding.
 - Question schema rendering for both human interview and model prompt output.
 - Contract freezing/loading and provenance/trust handling.
+- A deterministic runtime composition broker that turns accepted frozen contracts into host capability registrations through DCP-owned SPI.
 
 Protocol responsibilities are unchanged from prior specs (claim/manifest/contract/runtime binding/resolver/questions), but all implementation targets in this document are Java deliverables.
 
@@ -39,6 +40,8 @@ src/main/java/com/unfurl/dcp/
   resolver/         // need->capability structural matching
   validation/       // cross-schema validation
   versioning/       // semver compatibility helpers
+  broker/           // deterministic runtime composition broker
+  spi/              // ContractStore, ContractInvocableFactory, CapabilityRegistrar, BrokerEventSink
   testing/          // lightweight fixtures for downstream repos (test scope)
 ```
 
@@ -145,6 +148,12 @@ Required rule classes include:
 ### 7) Questions
 - Canonical question set renders to both human interview and model prompt from one definition.
 - Captured answers feed contract building and serialize to training tuple shape.
+
+### 8) Runtime Composition Broker
+- `present(claim, context)` validates the claim, performs frozen-contract lookup, verifies the offline signature, and returns `ACCEPT(MATCH_FOUND)` or structured refusal reasons without model calls or network access.
+- `accept(disposition, registrar, factory, context)` accepts only `DispositionKind.ACCEPT`, re-fetches the frozen contract by id/version, re-verifies its signature, and registers exactly the contract's binding through `CapabilityRegistrar`.
+- `revoke(handle, registrar, context)` unregisters exposed capabilities without renegotiation.
+- Broker events carry metadata only by default and propagate correlation ids through the broker path.
 
 ---
 
