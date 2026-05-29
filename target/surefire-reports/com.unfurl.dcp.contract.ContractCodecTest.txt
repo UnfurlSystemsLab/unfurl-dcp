@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.unfurl.dcp.contract.ContractCodecTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.440 s -- in com.unfurl.dcp.contract.ContractCodecTest
