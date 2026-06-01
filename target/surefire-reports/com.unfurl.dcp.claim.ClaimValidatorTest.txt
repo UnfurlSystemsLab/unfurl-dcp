@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.unfurl.dcp.claim.ClaimValidatorTest
--------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in com.unfurl.dcp.claim.ClaimValidatorTest
