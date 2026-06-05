@@ -10,6 +10,14 @@
 
 DCP is the protocol by which components describe themselves, negotiate how they compose, and invoke one another. It exists so that independent products can be genuine peers — composable without hard-wiring, deployable together or apart — which is the structural expression of the Intelligent Components thesis.
 
+More precisely, the Domain Claim Protocol is a **dynamic composite protocol** for declaring, composing, validating, and binding enterprise capabilities across multiple levels of a system. A DCP may contain descendant DCPs, and those descendants may be assembled, replaced, enabled, disabled, or rebound dynamically based on configuration, policies, runtime context, tenant needs, deployment environment, or selected capabilities.
+
+The key principle is:
+
+> DCP enables late-bound enterprise composition.
+
+Composition is not hardcoded in application code or fixed topology. Composition is resolved through claims, requirements, policies, and bindings.
+
 DCP is **three protocols under one name**, joined by a cache:
 
 1. **Description** — a component publishes a static *claim* describing its domain.
@@ -17,6 +25,86 @@ DCP is **three protocols under one name**, joined by a cache:
 3. **Invocation** — components call each other against a frozen contract. Fast, deterministic, no intelligence.
 
 The single most important property: **negotiation is a compile step; invocation is execution.** You compile once and run the binary many times. Intelligence touches Planes 1 and 2 at authoring/first-contact time and never touches Plane 3. This is simultaneously the performance solution (no AI in the hot path) and the residency solution (no model in the perimeter). See §7.
+
+### Dynamic composite model
+
+DCP should not be understood as one fixed containment ladder such as:
+
+```text
+Company DCP
+  -> Substrate DCP
+       -> Module DCP
+            -> Component DCP
+```
+
+That hierarchy can exist, but it is not the protocol's limit. The more general model is a dynamically governable composition graph:
+
+```text
+Company DCP
+  -> Substrate DCP: Azure
+  -> Substrate DCP: AWS
+  -> Module DCP: Identity
+       -> Component DCP: Keycloak
+       -> Component DCP: Auth0
+  -> Module DCP: Storage
+       -> Component DCP: Azure Blob
+       -> Component DCP: S3
+  -> Module DCP: AI
+       -> Component DCP: Azure OpenAI
+       -> Component DCP: Bedrock
+       -> Component DCP: Local Model Gateway
+```
+
+At deployment or runtime activation time, different tenants can resolve different valid compositions from the same larger claim graph:
+
+| Tenant | Resolved composition |
+|---|---|
+| Tenant A | Azure substrate + Keycloak + Azure Blob + Azure OpenAI |
+| Tenant B | AWS substrate + Auth0 + S3 + Bedrock |
+| Tenant C | Private substrate + Keycloak + MinIO + Local Model Gateway |
+
+This gives DCP four important behaviors:
+
+1. **Dynamic discovery** - find available descendant DCPs.
+2. **Dynamic selection** - choose the right descendant based on capability, policy, tenant, or environment.
+3. **Dynamic validation** - verify compatibility before activation.
+4. **Dynamic binding** - connect selected components without changing application code.
+
+Illustrative shape:
+
+```yaml
+dcp:
+  id: module.ai-layout
+  type: module
+  compositionMode: dynamic
+
+  requires:
+    - capability: ai.text-generation
+    - capability: object-storage
+    - capability: telemetry
+    - capability: auth-context
+
+  compatibleDescendants:
+    - component.azure-openai
+    - component.aws-bedrock
+    - component.local-llm-gateway
+
+  selectionPolicy:
+    strategy: policy-driven
+    rules:
+      - if: tenant.dataResidency == "india"
+        prefer: component.local-llm-gateway
+      - if: environment == "azure"
+        prefer: component.azure-openai
+      - if: costMode == "optimized"
+        prefer: component.local-llm-gateway
+
+  bindings:
+    mode: late-bound
+    validation: required-before-activation
+```
+
+The protocol therefore turns enterprise architecture from a static assembly into a dynamically governable composition graph. Fabric and Studio make that graph inspectable and operable; Flow executes only the validated, bound result.
 
 ### Relationship to MCP
 
