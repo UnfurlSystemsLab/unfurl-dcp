@@ -9,6 +9,6 @@
 - `docs/LLD-unfurl-dcp-java.md`
 - `docs/REPO-unfurl-dcp-build-spec.md`
 - `docs/REPO-unfurl-dcp-java-build-spec.md`
+- `docs/REPO-recursive-dcp-projection-build-spec.md`
 - `docs/SECURITY.md`
 - `docs/RELIABILITY.md`
-
