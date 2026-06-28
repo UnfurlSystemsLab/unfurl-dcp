@@ -2,6 +2,7 @@ package com.unfurl.dcp.resolver;
 
 import com.unfurl.dcp.claim.*;
 import com.unfurl.dcp.testing.Fixtures;
+import com.unfurl.dcp.validation.ErrorCode;
 import com.unfurl.dcp.versioning.SemverRange;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +41,19 @@ class CapabilityResolverTest {
 
         assertThat(denied.resolved()).isFalse();
         assertThat(allowed.resolved()).isTrue();
+    }
+
+    @Test
+    void refusesAmbiguousHighestSemverMatches() {
+        Claim provider = providerWithOffers(
+                new Offer("answer.search", "one", ConsumerAccess.ANY, null, Stability.STABLE, "1.0.0", false, null),
+                new Offer("answer.search", "two", ConsumerAccess.ANY, null, Stability.STABLE, "1.0.0", false, null));
+
+        ResolutionResult result = new CapabilityResolver().resolve(new ResolutionRequest(
+                "answer.search", null, new SemverRange(">=1.0.0"), URI.create("urn:consumer"), List.of(provider)));
+
+        assertThat(result.resolved()).isFalse();
+        assertThat(result.reason()).isEqualTo(ErrorCode.MULTIPLE_MATCHES.name());
     }
 
     private Claim providerWithOffers(Offer... offers) {

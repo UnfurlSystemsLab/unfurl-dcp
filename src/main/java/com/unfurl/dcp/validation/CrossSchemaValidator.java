@@ -37,10 +37,9 @@ public final class CrossSchemaValidator {
             diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "contract and claims are required", "$"));
             return new SchemaValidationReport(diagnostics);
         }
-        Claim provider = claimsByUri.get(contract.parties().provider().claimUri());
-        if (provider == null) {
-            diagnostics.add(Diagnostic.error(ErrorCode.CONTRACT_PARTIES_INVALID, "provider claim not found", "parties.provider"));
-        } else {
+        validateParty("consumer", contract.parties().consumer().claimUri(), contract.parties().consumer().claimVersion(), claimsByUri, diagnostics);
+        Claim provider = validateParty("provider", contract.parties().provider().claimUri(), contract.parties().provider().claimVersion(), claimsByUri, diagnostics);
+        if (provider != null) {
             boolean capabilityFound = provider.offers().stream()
                     .filter(offer -> Objects.equals(offer.capability(), contract.binding().providerCapability()))
                     .map(Offer::version)
@@ -50,6 +49,41 @@ public final class CrossSchemaValidator {
             }
         }
         return new SchemaValidationReport(diagnostics);
+    }
+
+    private Claim validateParty(
+            String partyName,
+            URI expectedClaimUri,
+            String pinnedClaimVersion,
+            Map<URI, Claim> claimsByUri,
+            List<Diagnostic> diagnostics
+    ) {
+        Claim claim = claimsByUri.get(expectedClaimUri);
+        String fieldPath = "parties." + partyName;
+        if (claim == null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CONTRACT_PARTIES_INVALID, partyName + " claim not found", fieldPath));
+            return null;
+        }
+        if (!Objects.equals(claim.identity().version(), pinnedClaimVersion)) {
+            if (semver.satisfies(claim.identity().version(), ">" + pinnedClaimVersion)) {
+                diagnostics.add(new Diagnostic(
+                        Severity.WARNING,
+                        ErrorCode.CONTRACT_INVALIDATED,
+                        partyName + " claim version drifted from pinned contract version",
+                        claim.identity().uri(),
+                        null,
+                        null,
+                        null,
+                        fieldPath + ".claim_version",
+                        pinnedClaimVersion,
+                        null,
+                        null,
+                        Map.of("pinned_version", pinnedClaimVersion, "supplied_version", claim.identity().version())));
+            } else {
+                diagnostics.add(Diagnostic.error(ErrorCode.CONTRACT_PARTIES_INVALID, partyName + " claim version does not match contract pin", fieldPath + ".claim_version"));
+            }
+        }
+        return claim;
     }
 
     public SchemaValidationReport validate(RuntimeBinding binding, CompositionContract contract) {

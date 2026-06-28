@@ -49,7 +49,7 @@ public final class ContractInvocableAdapter implements ContractInvocable {
                 invocation.consumerComponent(),
                 invocation.providerComponent(),
                 invocation.input(),
-                invocation.correlationId(),
+                invocation.correlationId() == null ? correlationId(context) : invocation.correlationId(),
                 invocation.traceContext(),
                 invocation.integrityHash(),
                 metadata);
@@ -70,5 +70,9 @@ public final class ContractInvocableAdapter implements ContractInvocable {
                 TRUST_TIER_KEY, frozenContract.contract().trust().tier().name(),
                 REGISTRATION_HANDLE_KEY, registrationHandle
         );
+    }
+
+    private String correlationId(ExecutionContext context) {
+        return context == null ? null : context.correlationId();
     }
 }

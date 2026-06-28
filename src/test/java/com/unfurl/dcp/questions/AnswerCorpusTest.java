@@ -23,4 +23,17 @@ class AnswerCorpusTest {
         assertThat(tuple.expectedRedirection()).isEqualTo("urn:billing");
         assertThat(tuple.rationale()).isEqualTo("outside provider boundary");
     }
+
+    @Test
+    void canonicalQuestionSetContainsTrainingAndRuntimeDecisionInputs() {
+        assertThat(NegotiationQuestionSchema.CANONICAL_V0_2.questions())
+                .extracting(NegotiationQuestion::id)
+                .contains(
+                        "expected_disposition",
+                        "expected_redirection",
+                        "consumer_access",
+                        "data_mapping",
+                        "requires_human_escalation",
+                        "runtime_assumption");
+    }
 }

@@ -153,7 +153,20 @@ Required rule classes include:
 - `present(claim, context)` validates the claim, performs frozen-contract lookup, verifies the offline signature, and returns `ACCEPT(MATCH_FOUND)` or structured refusal reasons without model calls or network access.
 - `accept(disposition, registrar, factory, context)` accepts only `DispositionKind.ACCEPT`, re-fetches the frozen contract by id/version, re-verifies its signature, and registers exactly the contract's binding through `CapabilityRegistrar`.
 - `revoke(handle, registrar, context)` unregisters exposed capabilities without renegotiation.
+- `invalidate(handle, registrar, context)` emits `CONTRACT_INVALIDATED` and revokes exposed capabilities without attempting runtime self-heal or design-time renegotiation.
 - Broker events carry metadata only by default and propagate correlation ids through the broker path.
+
+### 9) SPI
+- `ContractStore` provides deterministic frozen-contract lookup by provider claim identity and by contract id/version.
+- `ContractInvocableFactory` materializes the host executor for the contract's single binding without making DCP depend on host products.
+- `CapabilityRegistrar` is the only mutable registration port used by the broker; the broker must not import or mutate substrate's read-only `CapabilityRegistry`.
+- `BrokerEventSink` defaults to `NoopBrokerEventSink`, which performs no I/O.
+
+### 10) Architecture And Enterprise Guardrails
+- ArchUnit enforces package boundaries for the single-artifact layout: design-time packages do not depend on broker/SPI, `trust` remains a leaf, production code does not depend on test fixtures, and the broker does not import question/manifest/description packages.
+- No host product packages, web frameworks, HTTP clients, DB clients, cloud SDKs, auth SDKs, AI SDKs, or observability SDKs are production dependencies.
+- Offline verification uses caller-supplied key sets only; no remote key fetches or callbacks are permitted.
+- Property tests cover claim-validator determinism, resolver stability under candidate shuffling, renderer identity, freeze/load byte stability, and SemVer helper behavior.
 
 ---
 

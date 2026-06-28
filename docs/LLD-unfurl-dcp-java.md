@@ -917,12 +917,12 @@ Enterprise tests:
 
 These notes flag the deltas this LLD introduces relative to its neighbors. They are not separate work items; they are pointers for the implementers of those repos.
 
-**`unfurl-foundry-substrate` (`OfferFragment` placeholder).** `foundry-substrate-offers` currently ships an `OfferFragment` record as an explicit placeholder for "the DCP claim offer fragment until `unfurl-dcp` publishes." Once this LLD is implemented, `foundry-substrate-offers` should:
+**`unfurl-foundry-substrate` (`OfferFragment` placeholder) — DONE.** `foundry-substrate-offers` no longer ships the `OfferFragment` placeholder; it consumes `unfurl-dcp` directly:
 
-- Replace `OfferFragment` with `com.unfurl.dcp.claim.Offer` for any field whose intent is "the offer record from a provider claim."
-- Implement `com.unfurl.dcp.spi.ContractInvocableFactory` so its `AgentInvocation` / `ToolInvocation` / `RagInvocation` constructors are reachable from the broker (factory receives `CompositionContract` + `Binding`; it resolves the corresponding `claim.Offer` itself if needed for `consumer_access` / `cost_implications`).
-- Add `unfurl-dcp` to the `foundry-substrate-offers` POM (its sole DCP-importing module, per the foundry-substrate LLD).
-- The `foundry-substrate-offers/pom.xml` already carries a TODO note stating this; this LLD is the trigger to act on it.
+- `OfferFragment` is removed; `com.unfurl.dcp.claim.Offer` is used directly (e.g. `AiOffers.standardAiOffers(...)`).
+- `com.unfurl.dcp.spi.ContractInvocableFactory` is implemented by `FoundryContractInvocableFactory`, which materializes `AgentInvocation` / `ToolInvocation` / `RagInvocation` / `ProviderInvocation` from a `CompositionContract` + `Binding`.
+- `unfurl-dcp` is on the `foundry-substrate-offers` POM (its sole DCP-importing module), and the prior pom TODO note is gone.
+- The module additionally hosts `FoundryClaimProjector` and `FlowClaimProjector`, which synthesize DCP claims (with `contains` containment) from the foundry agent and flow/workflow substrates so both project through the same `DcpProjectionProjector`.
 
 **Host (flow / foundry) compatibility.** Hosts must:
 
@@ -931,10 +931,10 @@ These notes flag the deltas this LLD introduces relative to its neighbors. They 
 
 **`unfurl-substrate` impact.** None required for the broker to function. The substrate `CapabilityRegistry` interface stays read-only; mutability is owned by `CapabilityRegistrar` in DCP, exactly because DCP also owns the registration lifecycle. If the substrate later wishes to declare a mutable extension interface, the broker can be retargeted; today's design avoids any substrate API change.
 
-**`REPO-unfurl-dcp-java-build-spec.md` update needed.** The Java build spec lists the original protocol responsibilities (schemas, projection, resolver, freeze/load, questions). The runtime composition broker — added by the foundry-substrate RECONCILIATION — is not in that build spec. The build spec should be updated to:
+**`REPO-unfurl-dcp-java-build-spec.md` — DONE.** The Java build spec has been updated to include the runtime composition broker added by the foundry-substrate RECONCILIATION. It now contains:
 
-- Add `broker/` and `spi/` to the Java package layout.
-- Add a "Broker" responsibility section: deterministic accept/reject, capability registration via SPI, no-runtime-self-heal.
-- Add acceptance criteria mirroring §"Testing And Architecture Enforcement" of this LLD.
+- `broker/` and `spi/` in the Java package layout.
+- A "Runtime Composition Broker" responsibility section (§8): deterministic `present`/`accept`/`revoke`/`invalidate`, capability registration via SPI, and no-runtime-self-heal.
+- Acceptance criteria mirroring §"Testing And Architecture Enforcement" of this LLD (build-spec §8 broker, §9 SPI, §10 architecture/enterprise/property tests).
 
-This LLD is authoritative until the build spec is updated.
+The build spec and this LLD are now consistent.

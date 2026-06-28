@@ -59,6 +59,16 @@ public final class RuntimeBindingValidator {
                     && !Objects.equals(binding.consumerInstance().componentVersion(), contract.parties().consumer().claimVersion())) {
                 diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "consumer component_version must match contract consumer claim_version", "consumer_instance.component_version"));
             }
+            if (binding.runtimePolicy() != null && binding.runtimePolicy().timeoutMs() != null) {
+                if (binding.runtimePolicy().timeoutMs() <= 0) {
+                    diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "runtime timeout_ms must be positive", "runtime_policy.timeout_ms"));
+                }
+                if (contract.expectations() != null
+                        && contract.expectations().timeoutMs() != null
+                        && binding.runtimePolicy().timeoutMs() > contract.expectations().timeoutMs()) {
+                    diagnostics.add(Diagnostic.error(ErrorCode.BINDING_OVERRIDES_OWNERSHIP, "runtime timeout_ms cannot exceed frozen contract expectations", "runtime_policy.timeout_ms"));
+                }
+            }
         }
         if (binding.providerInstance() != null && binding.providerInstance().baseUrl() != null && binding.providerInstance().baseUrlRef() != null) {
             diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "base_url and base_url_ref are mutually exclusive", "provider_instance"));

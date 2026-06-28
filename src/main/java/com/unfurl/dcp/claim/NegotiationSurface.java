@@ -1,5 +1,6 @@
 package com.unfurl.dcp.claim;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 
@@ -9,6 +10,7 @@ public record NegotiationSurface(
         @NotBlank String endpoint,
         List<String> protocolsSupported,
         @NotEmpty List<SupportedIntent> supportedIntents,
+        @JsonAlias("answer_grounding")
         @NotEmpty List<String> answerGrounding,
         @NotEmpty List<String> limitations
 ) {

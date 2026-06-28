@@ -32,6 +32,21 @@ class ContractInvocableAdapterTest {
     }
 
     @Test
+    void usesExecutionContextCorrelationIdWhenInvocationDoesNotProvideOne() {
+        AtomicReference<ContractInvocation> observed = new AtomicReference<>();
+        ContractInvocableAdapter adapter = new ContractInvocableAdapter(Fixtures.frozenContract(CryptoFixtures.keyPair()), "handle",
+                delegate((invocation, context) -> {
+                    observed.set(invocation);
+                    return ContractInvocationResult.success(Map.of());
+                }));
+        ExecutionContext context = new ExecutionContext("tenant", "user", java.util.List.of(), java.util.List.of(), "ctx-corr", "request", Map.of(), Map.of());
+
+        adapter.invoke(new ContractInvocation("ignored", "op", "consumer", "provider", Map.of(), null, Map.of(), "hash", Map.of()), context);
+
+        assertThat(observed.get().correlationId()).isEqualTo("ctx-corr");
+    }
+
+    @Test
     void rejectsInvocationReservedMetadataOverrides() {
         ContractInvocableAdapter adapter = new ContractInvocableAdapter(Fixtures.frozenContract(CryptoFixtures.keyPair()), "handle",
                 delegate((invocation, context) -> ContractInvocationResult.success(Map.of())));

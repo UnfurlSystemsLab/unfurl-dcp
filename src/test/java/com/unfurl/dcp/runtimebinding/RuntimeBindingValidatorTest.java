@@ -46,6 +46,27 @@ class RuntimeBindingValidatorTest {
                 .anySatisfy(diagnostic -> assertThat(diagnostic.fieldPath()).isEqualTo("provider_instance.component_version"));
     }
 
+    @Test
+    void rejectsRuntimeTimeoutsOutsideFrozenContractBounds() {
+        RuntimeBinding binding = new RuntimeBinding(
+                URI.create("urn:binding"),
+                URI.create("urn:contract"),
+                "1.0.0",
+                new TargetEnvironment("test"),
+                new ProviderInstance(URI.create("urn:provider"), "1.0.0", "provider", DeploymentKind.IN_PROCESS, null, null, null),
+                new ConsumerInstance(URI.create("urn:consumer"), "1.0.0", "consumer"),
+                new RuntimePolicy(true, 2000, "test", true),
+                new Configuration(Map.of()),
+                new DeploymentControls(Map.of()),
+                new Lifecycle(true));
+
+        assertThat(validator.validate(binding, Fixtures.validContract()).diagnostics())
+                .anySatisfy(diagnostic -> {
+                    assertThat(diagnostic.code()).isEqualTo(ErrorCode.BINDING_OVERRIDES_OWNERSHIP);
+                    assertThat(diagnostic.fieldPath()).isEqualTo("runtime_policy.timeout_ms");
+                });
+    }
+
     private RuntimeBinding validBinding(Configuration configuration) {
         return new RuntimeBinding(
                 URI.create("urn:binding"),

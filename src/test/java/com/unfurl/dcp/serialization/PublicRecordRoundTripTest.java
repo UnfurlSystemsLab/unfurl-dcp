@@ -7,15 +7,18 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.unfurl.dcp.claim.ClaimMetadata;
 import com.unfurl.dcp.contract.ContractCodec;
 import com.unfurl.dcp.manifest.*;
 import com.unfurl.dcp.questions.NegotiationQuestionSchema;
 import com.unfurl.dcp.runtimebinding.*;
 import com.unfurl.dcp.testing.Fixtures;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -34,6 +37,24 @@ class PublicRecordRoundTripTest {
 
         assertThat(fromJson).isEqualTo(value);
         assertThat(fromYaml).isEqualTo(value);
+    }
+
+    @Test
+    void acceptsPreferredSnakeCaseWireNamesOnInput() throws Exception {
+        String json = """
+                {
+                  "dcp_version": "0.2.0",
+                  "claim_version": "1.0.0",
+                  "created_at": "1970-01-01T00:00:00Z",
+                  "extensions": {}
+                }
+                """;
+
+        ClaimMetadata metadata = JSON.readValue(json, ClaimMetadata.class);
+
+        assertThat(metadata.dcpVersion()).isEqualTo("0.2.0");
+        assertThat(metadata.claimVersion()).isEqualTo("1.0.0");
+        assertThat(metadata.createdAt()).isEqualTo(Instant.EPOCH);
     }
 
     static Stream<org.junit.jupiter.params.provider.Arguments> records() {

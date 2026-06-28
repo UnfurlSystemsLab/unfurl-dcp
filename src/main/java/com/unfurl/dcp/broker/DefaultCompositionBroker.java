@@ -111,6 +111,15 @@ public final class DefaultCompositionBroker implements CompositionBroker {
         }
     }
 
+    @Override
+    public void invalidate(RegistrationHandle handle, CapabilityRegistrar registrar, ExecutionContext context) {
+        if (handle == null) {
+            return;
+        }
+        publish(BrokerEventType.CONTRACT_INVALIDATED, handle.claimUri(), handle.contractId(), null, DispositionReason.CONTRACT_INVALIDATED, context);
+        revoke(handle, registrar, context);
+    }
+
     private Disposition verifiedDisposition(Claim claim, FrozenContract frozen, ExecutionContext context) {
         VerificationResult result = verifier.verify(frozen.signedContract(), keySet);
         if (!result.valid()) {

@@ -16,4 +16,6 @@ public interface CompositionBroker {
     );
 
     void revoke(RegistrationHandle handle, CapabilityRegistrar registrar, ExecutionContext context);
+
+    void invalidate(RegistrationHandle handle, CapabilityRegistrar registrar, ExecutionContext context);
 }

@@ -1,10 +1,13 @@
 package com.unfurl.dcp.claim;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 import java.util.List;
 
 public record ConflictResolution(
         List<OverlappingConcern> overlappingConcerns,
         List<String> precedenceRules,
+        @JsonAlias("requires_human_escalation")
         boolean requiresHumanEscalation
 ) {
     public ConflictResolution {
