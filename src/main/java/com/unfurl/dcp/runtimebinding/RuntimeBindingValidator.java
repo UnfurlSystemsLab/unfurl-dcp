@@ -13,6 +13,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
+/**
+ * Validator strategy: enforces the runtime-binding firewall between frozen contract semantics and
+ * deployment-time knobs. It accepts only reference-style secrets/configuration, checks binding
+ * identity pins against the contract, and rejects fields that attempt to alter ownership, trust,
+ * conflict, dependency, or invalidation decisions made at design time.
+ */
 public final class RuntimeBindingValidator {
     private static final Pattern SECRET_KEY = Pattern.compile(".*(secret|password|passwd|token|api[_-]?key|credential|private[_-]?key).*", Pattern.CASE_INSENSITIVE);
     private static final Pattern SECRET_VALUE = Pattern.compile("(?i).*(bearer\\s+[a-z0-9._~+/=-]+|sk-[a-z0-9]{12,}|-----BEGIN .*PRIVATE KEY-----).*");
@@ -30,6 +36,11 @@ public final class RuntimeBindingValidator {
             "binding"
     );
 
+    /**
+     * Validate a runtime binding against its frozen contract. The binding may tune allowed runtime
+     * controls such as endpoint references and bounded timeouts; diagnostics identify any inline
+     * credential material, contract drift, or forbidden semantic override.
+     */
     public SchemaValidationReport validate(RuntimeBinding binding, CompositionContract contract) {
         List<Diagnostic> diagnostics = new ArrayList<>();
         if (binding == null) {
@@ -78,6 +89,11 @@ public final class RuntimeBindingValidator {
         return new SchemaValidationReport(diagnostics);
     }
 
+    /**
+     * Recursive scanner: walks free-form configuration maps and collections because deployment
+     * adapters may carry nested control blocks; every discovered secret-like value or forbidden key
+     * is reported with a stable field path.
+     */
     private void scanMap(String path, Map<String, Object> values, List<Diagnostic> diagnostics) {
         for (Map.Entry<String, Object> entry : values.entrySet()) {
             String keyPath = path + "." + entry.getKey();
@@ -104,15 +120,27 @@ public final class RuntimeBindingValidator {
         }
     }
 
+    /**
+     * Firewall helper: normalizes free-form keys so host-specific naming styles cannot bypass the
+     * set of semantic fields that runtime bindings are forbidden to override.
+     */
     private boolean isForbiddenOverrideKey(String key) {
         String normalized = key.toLowerCase(Locale.ROOT).replace('-', '_');
         return FORBIDDEN_POLICY_KEYS.stream().anyMatch(normalized::contains);
     }
 
+    /**
+     * Secret heuristic: catches common inline credential forms while allowing real deployments to
+     * pass opaque references through the typed SecretRef/ConfigRef fields.
+     */
     private boolean looksLikeSecret(Object value) {
         return value instanceof String stringValue && SECRET_VALUE.matcher(stringValue).matches();
     }
 
+    /**
+     * Map adapter: converts unknown nested map key types into diagnostic path strings without
+     * mutating the caller's deployment-control data.
+     */
     private Map<String, Object> castMap(Map<?, ?> values) {
         java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
         values.forEach((key, value) -> result.put(String.valueOf(key), value));

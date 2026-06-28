@@ -23,6 +23,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Strategy plus Ports & Adapters implementation of the DCP runtime broker. It owns the deterministic
+ * plane-3 flow: validate claim, look up a frozen contract, verify the offline signature, and expose
+ * exactly one accepted binding through host-provided SPI ports. The class is stateless except for its
+ * injected collaborators and must not perform network, model, or service-loader work.
+ */
 public final class DefaultCompositionBroker implements CompositionBroker {
     private final ContractStore contractStore;
     private final OfflineContractVerifier verifier;
@@ -30,6 +36,11 @@ public final class DefaultCompositionBroker implements CompositionBroker {
     private final ClaimValidator claimValidator;
     private final BrokerEventSink eventSink;
 
+    /**
+     * Constructor injection keeps all side-effecting collaborators host-owned. Null validators and
+     * event sinks are replaced with safe defaults; stores, verifiers, and key sets are required
+     * because broker decisions must be deterministic and auditable.
+     */
     public DefaultCompositionBroker(
             ContractStore contractStore,
             OfflineContractVerifier verifier,
@@ -44,6 +55,11 @@ public final class DefaultCompositionBroker implements CompositionBroker {
         this.eventSink = eventSink == null ? new NoopBrokerEventSink() : eventSink;
     }
 
+    /**
+     * Strategy method: turns a presented claim into a disposition. The only accepted path is a
+     * structurally valid claim with a matching frozen contract whose signature verifies offline;
+     * every other path is represented as a refusal reason.
+     */
     @Override
     public Disposition present(Claim claim, ExecutionContext context) {
         publish(BrokerEventType.CLAIM_PRESENTED, claim == null || claim.identity() == null ? null : claim.identity().uri(), null, null, null, context);
@@ -63,6 +79,11 @@ public final class DefaultCompositionBroker implements CompositionBroker {
                 .orElseGet(() -> noMatchingContract(claim, context));
     }
 
+    /**
+     * Adapter method: materializes the host executor for an accepted disposition. It re-fetches the
+     * frozen contract by id/version and re-verifies its signature so callers cannot smuggle stale
+     * or unverified contract objects into the capability surface.
+     */
     @Override
     public RegistrationHandle accept(
             Disposition disposition,
@@ -100,6 +121,11 @@ public final class DefaultCompositionBroker implements CompositionBroker {
         return handle;
     }
 
+    /**
+     * Lifecycle method: unregisters all capabilities exposed by a prior accept call. The broker
+     * deliberately emits one revoke event per capability so downstream audit can match registrar
+     * mutations to the registration handle.
+     */
     @Override
     public void revoke(RegistrationHandle handle, CapabilityRegistrar registrar, ExecutionContext context) {
         if (handle == null) {
@@ -111,6 +137,10 @@ public final class DefaultCompositionBroker implements CompositionBroker {
         }
     }
 
+    /**
+     * Runtime invalidation method: converts a host-detected contract assumption violation into an
+     * audit event and revocation. It never performs design-time renegotiation or self-healing.
+     */
     @Override
     public void invalidate(RegistrationHandle handle, CapabilityRegistrar registrar, ExecutionContext context) {
         if (handle == null) {
@@ -120,6 +150,10 @@ public final class DefaultCompositionBroker implements CompositionBroker {
         revoke(handle, registrar, context);
     }
 
+    /**
+     * Verification helper: maps the frozen contract signature result into the accepted/refused
+     * disposition shape while preserving correlation through the event sink.
+     */
     private Disposition verifiedDisposition(Claim claim, FrozenContract frozen, ExecutionContext context) {
         VerificationResult result = verifier.verify(frozen.signedContract(), keySet);
         if (!result.valid()) {
@@ -130,6 +164,10 @@ public final class DefaultCompositionBroker implements CompositionBroker {
         return Disposition.accept(frozen.contract().contractId(), frozen.contract().contractVersion());
     }
 
+    /**
+     * Refusal helper: uses fabric's precomputed ownership redirection from the provider claim when
+     * no frozen contract exists, keeping runtime behavior deterministic and explanation-bearing.
+     */
     private Disposition noMatchingContract(Claim claim, ExecutionContext context) {
         String redirection = claim.refusals().stream()
                 .map(refusal -> refusal.ownedBy())
@@ -140,10 +178,18 @@ public final class DefaultCompositionBroker implements CompositionBroker {
         return Disposition.refuse(DispositionReason.NO_MATCHING_CONTRACT, "no matching frozen contract", redirection);
     }
 
+    /**
+     * Event adapter: emits metadata-only broker events through the injected sink. Payloads omit full
+     * claims/contracts by invariant so hosts can opt into richer audit outside this library.
+     */
     private void publish(BrokerEventType type, java.net.URI claimUri, java.net.URI contractId, String capability, DispositionReason reason, ExecutionContext context) {
         eventSink.publish(new BrokerEvent(type, claimUri, contractId, capability, correlationId(context), reason, Instant.now(), Map.of()), context);
     }
 
+    /**
+     * Context helper: extracts the optional correlation id without forcing callers to allocate a
+     * synthetic execution context for tests or offline validation.
+     */
     private String correlationId(ExecutionContext context) {
         return context == null ? null : context.correlationId();
     }

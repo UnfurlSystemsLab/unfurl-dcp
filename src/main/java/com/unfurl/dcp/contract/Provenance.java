@@ -4,6 +4,11 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 
 import java.time.Instant;
 
+/**
+ * Schema record: records how a frozen composition contract was authored. Jackson aliases preserve
+ * snake_case wire compatibility, while the contract validator uses the mode/model/human flags to
+ * enforce provenance consistency and trust-tier derivation.
+ */
 public record Provenance(
         @JsonAlias("created_by")
         CreatedBy createdBy,

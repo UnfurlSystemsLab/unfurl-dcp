@@ -4,6 +4,11 @@ import jakarta.validation.constraints.NotEmpty;
 
 import java.util.List;
 
+/**
+ * Schema record: owns the canonical list of negotiation questions DCP exposes to Fabric and model
+ * prompt projections. The invariant is append-only semantics for captured answers: question ids are
+ * stable protocol keys used by AnswerCorpus and downstream training tuple generation.
+ */
 public record NegotiationQuestionSchema(@NotEmpty List<NegotiationQuestion> questions) {
     public static final NegotiationQuestionSchema CANONICAL_V0_2 = new NegotiationQuestionSchema(List.of(
             new NegotiationQuestion("expected_disposition", null, "Should this composition be accepted or refused?", AnswerType.DISPOSITION, FeedsTarget.CONFLICT_CHECK),
@@ -17,6 +22,10 @@ public record NegotiationQuestionSchema(@NotEmpty List<NegotiationQuestion> ques
             new NegotiationQuestion("runtime_assumption", null, "What runtime assumption invalidates this contract?", AnswerType.FREE_TEXT, FeedsTarget.BINDING)
     ));
 
+    /**
+     * Defensive-copy constructor: keeps the schema immutable so renderers and answer capture cannot
+     * observe caller-side list mutation after construction.
+     */
     public NegotiationQuestionSchema {
         questions = questions == null ? List.of() : List.copyOf(questions);
     }

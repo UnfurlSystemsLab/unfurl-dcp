@@ -9,6 +9,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Adapter: wraps a host-provided ContractInvocable with DCP contract metadata and reserved-key
+ * enforcement. It is the runtime bridge between a frozen contract registration and the substrate
+ * invocation API, ensuring every call/result carries contract version, trust tier, and registration
+ * handle without allowing delegates to forge those fields.
+ */
 public final class ContractInvocableAdapter implements ContractInvocable {
     public static final String CONTRACT_VERSION_KEY = "dcp.contractVersion";
     public static final String TRUST_TIER_KEY = "dcp.trustTier";
@@ -20,22 +26,40 @@ public final class ContractInvocableAdapter implements ContractInvocable {
     private final String registrationHandle;
     private final ContractInvocable delegate;
 
+    /**
+     * Construct an adapter for one accepted registration. The frozen contract supplies immutable
+     * contract/trust metadata, the handle identifies the broker registration, and the delegate owns
+     * the actual host capability execution.
+     */
     public ContractInvocableAdapter(FrozenContract frozenContract, String registrationHandle, ContractInvocable delegate) {
         this.frozenContract = frozenContract;
         this.registrationHandle = registrationHandle;
         this.delegate = delegate;
     }
 
+    /**
+     * Return the frozen DCP contract id exposed through the substrate contract interface, not the
+     * delegate's own id, so callers invoke against the accepted contract identity.
+     */
     @Override
     public String contractId() {
         return frozenContract.contract().contractId().toString();
     }
 
+    /**
+     * Return the frozen DCP contract version so invocation dispatch and audit stay pinned to the
+     * contract version accepted by the broker.
+     */
     @Override
     public String contractVersion() {
         return frozenContract.contract().contractVersion();
     }
 
+    /**
+     * Invocation adapter: rejects reserved metadata overrides, injects DCP metadata, delegates the
+     * call, and applies the same reserved-key protection to the result. If the invocation lacks a
+     * correlation id, the execution context supplies the audit correlation path.
+     */
     @Override
     public ContractInvocationResult invoke(ContractInvocation invocation, ExecutionContext context) {
         Map<String, Object> metadata = new LinkedHashMap<>(invocation.metadata());
@@ -64,6 +88,10 @@ public final class ContractInvocableAdapter implements ContractInvocable {
         return new ContractInvocationResult(result.success(), result.output(), result.errorCode(), result.errorMessage(), resultMetadata);
     }
 
+    /**
+     * Reserved metadata factory: centralizes DCP-owned keys so invocation and result tagging remain
+     * identical and delegates cannot partially override the audit envelope.
+     */
     private Map<String, Object> reservedMetadata() {
         return Map.of(
                 CONTRACT_VERSION_KEY, contractVersion(),
@@ -72,6 +100,10 @@ public final class ContractInvocableAdapter implements ContractInvocable {
         );
     }
 
+    /**
+     * Context helper: extracts the host correlation id when the invocation payload did not carry one,
+     * preserving end-to-end audit stitching without inventing ids inside DCP.
+     */
     private String correlationId(ExecutionContext context) {
         return context == null ? null : context.correlationId();
     }

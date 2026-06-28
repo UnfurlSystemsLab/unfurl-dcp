@@ -13,9 +13,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Cross-schema validator service: checks invariants that no single DCP schema can know alone.
+ * It binds claim/manifest identity, contract party pins, provider capability versions, and runtime
+ * binding identity back to the frozen contract while returning structured diagnostics instead of
+ * throwing for expected validation failures.
+ */
 public final class CrossSchemaValidator {
     private final SemverHelpers semver = new SemverHelpers();
 
+    /**
+     * Validate that a webapp manifest is the frontend projection of the supplied claim. The output
+     * reports URI/version drift so hosts do not mount a UI facet for the wrong component identity.
+     */
     public SchemaValidationReport validate(Claim claim, WebappManifest manifest) {
         List<Diagnostic> diagnostics = new ArrayList<>();
         if (claim == null || manifest == null) {
@@ -31,6 +41,11 @@ public final class CrossSchemaValidator {
         return new SchemaValidationReport(diagnostics);
     }
 
+    /**
+     * Validate that a composition contract still points at pinned consumer/provider claims and that
+     * the provider exposes the bound capability at a satisfying offer version. Newer supplied claim
+     * versions are warnings because they indicate invalidation/drift rather than malformed history.
+     */
     public SchemaValidationReport validate(CompositionContract contract, Map<URI, Claim> claimsByUri) {
         List<Diagnostic> diagnostics = new ArrayList<>();
         if (contract == null || claimsByUri == null) {
@@ -51,6 +66,11 @@ public final class CrossSchemaValidator {
         return new SchemaValidationReport(diagnostics);
     }
 
+    /**
+     * Party pin helper: resolves one contract party against the supplied claim map and emits either
+     * missing/mismatched errors or a version-drift warning for newer claims. Returning the claim lets
+     * the provider path continue into capability-version checks.
+     */
     private Claim validateParty(
             String partyName,
             URI expectedClaimUri,
@@ -86,6 +106,10 @@ public final class CrossSchemaValidator {
         return claim;
     }
 
+    /**
+     * Validate that a runtime binding targets the exact frozen contract id and version. More detailed
+     * runtime-policy and secret checks remain in RuntimeBindingValidator to keep layering clear.
+     */
     public SchemaValidationReport validate(RuntimeBinding binding, CompositionContract contract) {
         List<Diagnostic> diagnostics = new ArrayList<>();
         if (binding == null || contract == null) {

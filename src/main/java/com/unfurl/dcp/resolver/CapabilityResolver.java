@@ -9,9 +9,19 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Strategy: performs deterministic need-to-capability matching across provider claims. It only
+ * considers structural fields (capability name, SemVer range, and consumer access policy), returns
+ * the highest compatible offer version, and refuses ambiguous highest-version matches.
+ */
 public final class CapabilityResolver {
     private final SemverHelpers semver = new SemverHelpers();
 
+    /**
+     * Resolve a consumer need against candidate provider claims. The request carries the consumer
+     * identity and optional access policies; the result is either the single highest structural
+     * match or a stable refusal reason suitable for contract-authoring diagnostics.
+     */
     public ResolutionResult resolve(ResolutionRequest request) {
         if (request == null) {
             return ResolutionResult.unresolved(ErrorCode.RESOLUTION_FAILED.name());
@@ -43,10 +53,18 @@ public final class CapabilityResolver {
                 "MATCH_FOUND");
     }
 
+    /**
+     * Policy helper: supplies the explicit access policy for a capability when present, otherwise
+     * derives the default policy from the provider offer's declared consumer access.
+     */
     private AccessPolicy accessPolicy(Offer offer, ResolutionRequest request) {
         return request.accessPoliciesByCapability().getOrDefault(offer.capability(), new AccessPolicy(offer.consumerAccess(), java.util.Set.of()));
     }
 
+    /**
+     * Value object: keeps the provider claim and matching offer together while sorting/filtering so
+     * tie detection can report ambiguity without losing the source claim.
+     */
     private record Candidate(Claim claim, Offer offer) {
     }
 }
