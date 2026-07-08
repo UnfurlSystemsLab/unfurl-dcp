@@ -4,15 +4,25 @@ import com.unfurl.dcp.validation.Diagnostic;
 import com.unfurl.dcp.validation.ErrorCode;
 import com.unfurl.dcp.validation.SchemaValidationReport;
 import com.unfurl.dcp.versioning.SemverHelpers;
+import com.unfurl.dcp.fault.FaultDeclaration;
+import com.unfurl.dcp.fault.ParentImpact;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Validator: enforces DCP claim invariants across domain boundaries, offers,
+ * metadata, and declared fault vocabulary using structured diagnostics.
+ */
 public final class ClaimValidator {
     private final SemverHelpers semver = new SemverHelpers();
 
+    /**
+     * Validate one claim and return deterministic diagnostics for expected
+     * schema failures instead of throwing.
+     */
     public SchemaValidationReport validate(Claim claim) {
         List<Diagnostic> diagnostics = new ArrayList<>();
         if (claim == null) {
@@ -58,6 +68,7 @@ public final class ClaimValidator {
         for (Offer offer : claim.offers()) {
             validateOffer(offer, diagnostics);
         }
+        validateFaults(claim, diagnostics);
         for (Refusal refusal : claim.refusals()) {
             if ("everything-else".equalsIgnoreCase(refusal.concern()) || refusal.rationale() == null || refusal.rationale().length() < 12) {
                 diagnostics.add(Diagnostic.warning(ErrorCode.CLAIM_MALFORMED, "refusal specificity is weak", "refusals"));
@@ -66,6 +77,9 @@ public final class ClaimValidator {
         return new SchemaValidationReport(diagnostics);
     }
 
+    /**
+     * Helper: validates versioning and cost invariants for one provider offer.
+     */
     private void validateOffer(Offer offer, List<Diagnostic> diagnostics) {
         if (offer == null) {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "offer is required", "offers"));
@@ -77,6 +91,43 @@ public final class ClaimValidator {
         boolean negotiation = offer.offerInterface() != null && offer.offerInterface().interfaceKind() == InterfaceKind.NEGOTIATION;
         if ((offer.metered() || negotiation) && (offer.costImplications() == null || offer.costImplications().isBlank())) {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "cost_implications are required for metered or negotiation offers", "offers.cost_implications"));
+        }
+    }
+
+    /**
+     * Helper: validates the first-class DCP fault vocabulary attached to a claim.
+     */
+    private void validateFaults(Claim claim, List<Diagnostic> diagnostics) {
+        if (claim.faults() == null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "faults section is required", "faults"));
+            return;
+        }
+        HashSet<String> codes = new HashSet<>();
+        for (FaultDeclaration fault : claim.faults().emitted()) {
+            if (fault == null) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault declaration is required", "faults.emitted"));
+                continue;
+            }
+            if (fault.code().isBlank()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault code is required", "faults.emitted.code"));
+            } else if (!codes.add(fault.code())) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault codes must be unique", "faults.emitted.code"));
+            }
+            if (fault.category() == null) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault category is required", "faults.emitted.category"));
+            }
+            if (fault.severity() == null) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault severity is required", "faults.emitted.severity"));
+            }
+            if (fault.description().isBlank()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault description is required", "faults.emitted.description"));
+            }
+            if (fault.affects().emptyAffectedSurface()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault must affect at least one need, offer, or constraint", "faults.emitted.affects"));
+            }
+            if (fault.propagation().parentImpact() != ParentImpact.NONE && fault.propagation().propagatesWhen().isBlank()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.FAULT_MALFORMED, "fault propagation requires propagates_when when parent impact is not NONE", "faults.emitted.propagation.propagates_when"));
+            }
         }
     }
 }

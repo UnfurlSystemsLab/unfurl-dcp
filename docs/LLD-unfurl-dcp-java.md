@@ -46,7 +46,7 @@ The design preserves the enterprise posture inherited from `unfurl-substrate` an
 
 `unfurl-dcp` must provide:
 
-- Java models for all five DCP schemas: claim, composition contract, runtime binding, webapp manifest, negotiation question schema.
+- Java models for all DCP schemas: claim, fault vocabulary/signals, composition contract, runtime binding, webapp manifest, negotiation question schema.
 - A single shared `ComponentDescription` that projects to both `Claim` and `WebappManifest` so the two never drift.
 - Layered validators: field-level (Jakarta), object-level (custom), cross-schema (services).
 - A structural resolver for `need → capability` binding using SemVer range matching.
@@ -71,6 +71,7 @@ root package: com.unfurl.dcp
 src/main/java/com/unfurl/dcp/
   description/      // shared ComponentDescription + projections to Claim and Manifest
   claim/            // Claim schema records + ClaimValidator
+  fault/            // fault declarations, runtime fault signals, deterministic propagation gate
   manifest/         // WebappManifest schema records + WebappManifestValidator
   contract/         // CompositionContract records, freezing, loading, provenance, trust, signature verification
   runtimebinding/   // RuntimeBinding records + RuntimeBindingValidator (no-inline-secrets, policy firewall)
@@ -100,7 +101,7 @@ description
   contains:
     ComponentDescription, Identity, DomainAssertion, Concern, StateOwned, DecisionOwned,
     BoundaryPrinciple, Refusal, Dependency, Offer, ConflictPosition, NegotiationSurface,
-    IntegrationPorts, ComponentMetadata
+    IntegrationPorts, FaultPolicy, ComponentMetadata
     Projections: ClaimProjector.toClaim(ComponentDescription), ManifestProjector.toManifest(ComponentDescription)
   may depend on:
     Jackson annotations, Jakarta Validation API
@@ -109,7 +110,15 @@ claim
   contains:
     Claim record + nested records mirroring HLD-C2 §A, ClaimValidator
   may depend on:
-    description, versioning, Jakarta Validation API, Hibernate Validator
+    description, fault, versioning, Jakarta Validation API, Hibernate Validator
+
+fault
+  contains:
+    FaultPolicy, FaultDeclaration, FaultAffects, FaultEvidence, FaultPropagation,
+    FaultRemediation, FaultSignal, FaultPropagationGate, FaultPropagationDecision,
+    FaultCategory, FaultSeverity, ParentImpact
+  may depend on:
+    claim, validation
 
 manifest
   contains:
@@ -152,7 +161,7 @@ validation
   contains:
     CrossSchemaValidator, SchemaValidationReport
   may depend on:
-    claim, manifest, contract, runtimebinding
+    claim, manifest, contract, runtimebinding, fault
 
 versioning
   contains:
@@ -192,6 +201,7 @@ Dependency direction is acyclic. Critical rules:
 
 - `trust/` is a **leaf**: it owns `TrustTier`, `TrustCreatedBy`, `TrustTierDeriver`, and `SignedContract` envelopes (canonical bytes + signature). It does NOT import `contract.CompositionContract` or `contract.Provenance`. `contract/` adapts `Provenance.createdBy` into the trust-owned `TrustCreatedBy` input and calls `TrustTierDeriver.derive(createdBy)` to populate `Trust.tier` — the derivation has exactly one home.
 - `description/`, `claim/`, `manifest/`, `runtimebinding/`, `questions/`, `resolver/`, `versioning/`, `validation/` must not depend on `broker/` or `spi/`.
+- `fault/` is a schema/runtime-decision package. It may read claims to evaluate declared fault policy, but it must not depend on broker/SPI or any concrete monitoring adapter.
 - `broker/` must not depend on `questions/`, `manifest/`, or `description/`. Interview rendering and manifest projection are design-time-only; the runtime broker is invocation-only.
 - `broker/` must not import `substrate-ports.CapabilityRegistry` directly. It registers/revokes through `spi.CapabilityRegistrar`, which the host implements over its mutable capability manager/registry implementation. This keeps the substrate `CapabilityRegistry` interface read-only and lets DCP own the mutability contract.
 - `unfurl-dcp` may depend on `unfurl-substrate` (substrate-composition-api, substrate-ports). It must not depend on `unfurl-flow`, `unfurl-foundry`, `unfurl-foundry-substrate`, or `unfurl-fabric`.
@@ -226,6 +236,7 @@ public record ComponentDescription(
         ConflictResolution conflictResolution,
         NegotiationSurface negotiationSurface,   // required iff identity.kind == INTELLIGENT_COMPONENT
         IntegrationPorts integrationPorts,
+        FaultPolicy faults,
         ComponentMetadata metadata
 ) { /* defensive copies, validation */ }
 ```
@@ -258,6 +269,7 @@ public record Claim(
         ConflictResolution conflictResolution,
         NegotiationSurface negotiationSurface,
         IntegrationPorts integrationPorts,
+        FaultPolicy faults,
         ClaimMetadata metadata
 ) { ... }
 
@@ -321,11 +333,63 @@ public record NegotiationSurface(
 - All required sections present; `refusals` and `boundaryPrinciples` non-empty.
 - `kind == INTELLIGENT_COMPONENT` ⇒ `negotiationSurface` present.
 - Concern identifiers unique within the claim.
+- `faults` present; each declared fault has code/category/severity/description and affects at least one need, offer, or constraint.
+- A fault whose `parentImpact` is not `NONE` has a non-blank `propagatesWhen` gate condition.
 - `metadata.dcpVersion >= 0.2.0`; `metadata.claimVersion == identity.version`.
 - Refusal specificity: emit a warning (not a hard fail) when a refusal's `concern` is "everything-else" or its `rationale` is below a minimum length.
 - Each offer's `version` valid SemVer; `metered` defaults to `false` when omitted; `costImplications` required when `metered == true` or `interfaceKind == NEGOTIATION`.
 
 Validation results are structured records (see §8), never exceptions for expected validation failures.
+
+### Fault Vocabulary And Propagation Gate (HLD-C2 A.10)
+
+Records in `com.unfurl.dcp.fault`:
+
+```java
+public record FaultPolicy(List<FaultDeclaration> emitted) { ... }
+
+public record FaultDeclaration(
+        String code,
+        FaultCategory category,
+        FaultSeverity severity,
+        String description,
+        FaultAffects affects,
+        FaultEvidence evidence,
+        FaultPropagation propagation,
+        FaultRemediation remediation
+) { ... }
+
+public record FaultSignal(
+        String faultId,
+        URI sourceClaimUri,
+        String sourceInstance,
+        URI contractId,
+        URI bindingId,
+        String capability,
+        String code,
+        FaultCategory category,
+        FaultSeverity severity,
+        Instant observedAt,
+        List<String> affectedNeeds,
+        List<String> affectedOffers,
+        List<String> affectedConstraints,
+        List<String> evidenceRefs,
+        String correlationId
+) { ... }
+
+public final class FaultPropagationGate {
+    public FaultPropagationDecision evaluate(Claim sourceClaim, FaultSignal signal) { ... }
+}
+```
+
+The gate is a deterministic Strategy over declared claim policy:
+
+1. Look up `signal.code` in `sourceClaim.faults().emitted()`.
+2. Reject undeclared fault codes with a structured non-propagating decision.
+3. Suppress faults whose declaration has `parentImpact == NONE`.
+4. Propagate declared faults with `DEGRADED` or `BLOCKED` impact, carrying affected needs/offers/constraints from the signal where present and otherwise from the declaration.
+
+The gate never calls a model, monitoring backend, network service, or Fabric. It only interprets a runtime signal against the frozen claim vocabulary so parent DCP graphs can explain blast radius without runtime renegotiation.
 
 ### Webapp Manifest (HLD-C2 §D)
 
@@ -855,6 +919,7 @@ No-phone-home:
 Unit tests:
 
 - Claim/manifest/contract/runtime-binding shape and validation: required fields, version pinning, refusal non-emptiness, boundary-principle requirement, intelligent-component negotiation-surface requirement, secret-reference enforcement, runtime-policy firewall.
+- Fault model: declarations must affect at least one need/offer/constraint; propagation conditions are required for parent impact; the propagation gate rejects undeclared faults, suppresses `NONE`, and propagates `DEGRADED`/`BLOCKED` deterministically.
 - `ComponentDescription` projection: every description produces a valid claim and manifest; the two share identity URI and version; manifest permissions derivable from claim.
 - Resolver: structural match success; version-range mismatch; access-policy enforcement; deterministic highest-match.
 - Question schema renderer: human-interview and model-prompt views are structurally identical after normalization.
@@ -906,10 +971,11 @@ Enterprise tests:
 9. Implement `questions/` schema model, canonical v0.2 set, `InterviewRenderer`, `ModelPromptRenderer`, `CapturedAnswer`/`AnswerCorpus`.
 10. Implement `resolver/` (`CapabilityResolver`, `ResolutionRequest`, `ResolutionResult`).
 11. Implement `validation/` cross-schema service.
-12. Implement `spi/` (`ContractStore`, `ContractInvocableFactory`, `CapabilityRegistrar`, `BrokerEventSink`, `NoopBrokerEventSink`).
-13. Implement `broker/` (`CompositionBroker` interface, `DefaultCompositionBroker` with constructor injection, `Disposition`, `DispositionReason`, `RegistrationHandle`, `BrokerEvent`).
-14. Implement `testing/` fixtures: `InMemoryContractStore`, `InMemoryCapabilityRegistrar`, `EchoContractInvocableFactory`, `RecordingBrokerEventSink`.
-15. Complete property tests, ArchUnit tests (package-scoped), and enterprise guardrail tests before downstream repos (`foundry-substrate-offers`, flow, foundry) consume the library.
+12. Implement `fault/` (`FaultPolicy`, declarations, runtime signals, and `FaultPropagationGate`).
+13. Implement `spi/` (`ContractStore`, `ContractInvocableFactory`, `CapabilityRegistrar`, `BrokerEventSink`, `NoopBrokerEventSink`).
+14. Implement `broker/` (`CompositionBroker` interface, `DefaultCompositionBroker` with constructor injection, `Disposition`, `DispositionReason`, `RegistrationHandle`, `BrokerEvent`).
+15. Implement `testing/` fixtures: `InMemoryContractStore`, `InMemoryCapabilityRegistrar`, `EchoContractInvocableFactory`, `RecordingBrokerEventSink`.
+16. Complete property tests, ArchUnit tests (package-scoped), and enterprise guardrail tests before downstream repos (`foundry-substrate-offers`, flow, foundry) consume the library.
 
 ---
 

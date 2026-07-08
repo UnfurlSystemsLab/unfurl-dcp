@@ -11,6 +11,10 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Projector tests: prove claim and manifest views derive from one component
+ * description, including the DCP fault vocabulary.
+ */
 class ProjectorTest {
     @Test
     void claimProjectionUsesDescriptionAsSingleSourceOfTruth() {
@@ -22,6 +26,7 @@ class ProjectorTest {
         assertThat(claim.domain()).isEqualTo(description.domain());
         assertThat(claim.refusals()).isEqualTo(description.refusals());
         assertThat(claim.offers()).isEqualTo(description.offers());
+        assertThat(claim.faults()).isEqualTo(description.faults());
         assertThat(claim.metadata().claimVersion()).isEqualTo(description.identity().version());
         assertThat(new ClaimValidator().validate(claim).valid()).isTrue();
     }
@@ -50,6 +55,7 @@ class ProjectorTest {
                 claim.conflictResolution(),
                 claim.negotiationSurface(),
                 claim.integrationPorts(),
+                claim.faults(),
                 new ComponentMetadata(Map.of("source", "test")));
     }
 }

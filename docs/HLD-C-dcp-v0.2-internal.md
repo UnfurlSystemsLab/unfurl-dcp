@@ -181,7 +181,27 @@ These positions are the vocabulary Plane 2 negotiation operates on. Without them
 
 The component's conversational interface (for intelligent components). Supported intents, grounding guarantees (what is answered from live introspection vs. training vs. retrieval), and limitations (what it refuses to do even with access). This is the Plane-2 entry point for an intelligent component negotiating on its own behalf.
 
-### 3.8 Metadata
+### 3.8 Fault vocabulary and propagation policy
+
+DCP treats operational faults as first-class protocol signals, not as untyped logs. A component claim declares the faults
+it can emit, the declared needs/offers/constraints each fault can affect, the evidence signals that justify the fault,
+the deterministic propagation gate for parent impact, and the remediation actions that may be taken without leaving the
+claim boundary.
+
+This matters because a lower-level failure is not automatically a higher-level fault. A child fault propagates upward
+only when the claim says the fault affects a parent-visible need, dependency, constraint, offer, or service expectation.
+The propagation decision is deterministic and runtime-safe:
+
+```text
+(declared fault vocabulary, observed fault signal) -> propagate | suppress | reject
+```
+
+The gate does not perform design-time negotiation and does not self-heal at runtime. If a fault invalidates a frozen
+contract assumption, runtime hard-fails and emits an invalidation signal; Fabric may renegotiate at the next design-time
+pass. This preserves the design-time/runtime firewall while giving operators and AI assistants a structured explanation
+of blast radius, affected claims, and allowed remediation actions.
+
+### 3.9 Metadata
 
 DCP version, claim version, supersedes list, effective-from, references.
 

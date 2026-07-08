@@ -10,7 +10,7 @@
 5. **Transport:** fixed enum `in_process` / `http_json` / `grpc`; most-efficient-mutually-supported.
 6. **Capability versioning:** standard semver range matching (the `packaging` library's rules).
 
-This document defines five schemas, specified together because they are projections of one model:
+This document defines the DCP schemas, specified together because they are projections of one model:
 - **A. Claim schema** (Plane 1) — a component's self-description.
 - **B. Composition contract schema** (Plane 2 output) — the frozen artifact.
 - **C. Runtime binding schema** (deployment/environment projection) — the mutable environment-specific wiring.
@@ -48,7 +48,8 @@ offers:              # A.6  required (may be empty)
 conflict_resolution: # A.7  required
 negotiation_surface: # A.8  optional (required if kind == intelligent_component)
 integration_ports:   # A.9  optional standard ports exposed/required by the component
-metadata:            # A.10 required
+faults:              # A.10 required, may be empty; declared runtime fault vocabulary
+metadata:            # A.11 required
 ```
 
 ### A.2 identity (required)
@@ -240,7 +241,67 @@ Rules:
 - If `identity.kind == intelligent_component`, the claim MUST still provide `negotiation_surface`.
 - Values under `integration_ports.authorization.permission_prefixes` MUST align with the webapp manifest `permissions` when a frontend projection exists.
 
-### A.10 metadata (required)
+### A.10 faults (required, may be empty)
+
+`faults` gives DCP a first-class operational-fault vocabulary. A runtime failure is not automatically a DCP fault. A
+DCP fault is a declared, machine-readable signal whose impact can be traced to needs, offers, constraints, contracts, or
+parent claims.
+
+```yaml
+faults:
+  emitted:                  # list, may be empty
+    - code: string          # required, stable machine code, e.g. storage.timeout
+      category: enum[dependency, capability, constraint, health, security, policy, runtime]
+      severity: enum[info, warning, degraded, critical, blocking]
+      description: string   # required
+      affects:
+        needs: list<string>        # declared needs affected by this fault
+        offers: list<string>       # declared offers/capabilities affected by this fault
+        constraints: list<string>  # declared constraints affected by this fault
+      evidence:
+        signals: list<enum[health, invocation_error, metric_threshold, policy_denial, contract_invalidation, external_event]>
+      propagation:
+        parent_impact: enum[none, degraded, blocked]
+        propagates_when: string    # required when parent_impact != none
+        suppresses_when: string?   # optional suppression condition
+      remediation:
+        allowed_actions: list<string>  # declared actions the runtime/operator may take
+```
+
+Rules:
+- `faults` MUST be present even when `emitted` is empty. Product examples may use `faults: { emitted: [] }`.
+- A declared fault MUST affect at least one need, offer, or constraint.
+- `parent_impact != none` requires `propagates_when`; this is the deterministic gate condition a runtime or parent
+  resolver evaluates before escalating the child fault upward.
+- `remediation.allowed_actions` must only name actions already permitted by the claim boundary or host policy.
+- DCP records fault meaning and propagation policy. It does not prescribe concrete monitoring adapters or auto-remediate
+  outside a declared allowed action.
+
+Runtime fault signals use the same vocabulary and are emitted by hosts/adapters when a declared fault is observed:
+
+```yaml
+fault_signal:
+  fault_id: string
+  source_claim_uri: uri
+  source_instance: string?
+  contract_id: uri?
+  binding_id: uri?
+  capability: string?
+  code: string
+  category: enum[dependency, capability, constraint, health, security, policy, runtime]
+  severity: enum[info, warning, degraded, critical, blocking]
+  observed_at: timestamp
+  affected_needs: list<string>
+  affected_offers: list<string>
+  affected_constraints: list<string>
+  evidence_refs: list<string>
+  correlation_id: string?
+```
+
+The fault propagation gate is deterministic: `(claim.faults, fault_signal) -> propagation_decision`. It may propagate,
+suppress, or reject an undeclared fault, but it must never renegotiate a contract in the runtime path.
+
+### A.11 metadata (required)
 
 ```yaml
 metadata:
@@ -527,6 +588,8 @@ answers to it. The schema is the bridge between the protocol and the experiment.
 
 Claim:
 - All required sections present; `refusals` and `boundary_principles` non-empty.
+- `faults` present; every declared fault affects at least one need, offer, or constraint.
+- Faults with parent impact require a propagation condition.
 - `kind == intelligent_component` => `negotiation_surface` present.
 - Concern identifiers unique within the claim.
 - `dcp_version >= 0.2.0`; `claim_version == identity.version`.

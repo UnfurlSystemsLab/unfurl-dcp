@@ -1,8 +1,13 @@
 package com.unfurl.dcp.validation;
 
+/**
+ * Error-code enum: stable machine-readable validation and broker reasons
+ * emitted by DCP services instead of throwing for expected failures.
+ */
 public enum ErrorCode {
     VALIDATION_FAILED,
     CLAIM_MALFORMED,
+    FAULT_MALFORMED,
     MANIFEST_MISMATCH,
     CONTRACT_PARTIES_INVALID,
     CONTRACT_PROVENANCE_INCONSISTENT,

@@ -10,8 +10,9 @@
 
 `unfurl-dcp` is a **library** that defines and operates the Domain Claim Protocol. It is an embedded substrate component, not a deployed service. It provides:
 
-- The five protocol schemas as Java models:
+- The protocol schemas as Java models:
   - claim
+  - fault vocabulary and runtime fault signal
   - composition contract
   - runtime binding
   - webapp manifest
@@ -33,6 +34,7 @@ Protocol responsibilities are unchanged from prior specs (claim/manifest/contrac
 src/main/java/com/unfurl/dcp/
   description/      // shared component description model + projection logic
   claim/            // claim schema models + validator
+  fault/            // fault declarations, runtime fault signals, deterministic propagation gate
   manifest/         // webapp manifest models + validator
   contract/         // composition contract, freeze/load, provenance, trust, verification
   runtimebinding/   // runtime binding schema + validator
@@ -88,6 +90,7 @@ Validation is layered:
 
 Required rule classes include:
 - Claim invariants (required sections, refusals/boundary principles, negotiation_surface for intelligent components).
+- Fault invariants (declared faults affect at least one need/offer/constraint; parent-impact propagation rules include a gate condition).
 - Manifest invariants (claim identity/version parity, permission derivability, theme mode constraints).
 - Contract invariants (party count/version pinning, provenance consistency, trust derivation consistency, runtime violation hard-fail policy).
 - Runtime binding invariants (contract linkage/version parity, no inline secrets, runtime-policy firewall).
@@ -117,6 +120,11 @@ Required rule classes include:
 ### 2) Claim
 - YAML/JSON claim documents deserialize via Jackson and validate successfully.
 - Invalid claims (empty refusals, missing boundary principles, missing negotiation surface for intelligent component) fail validation with deterministic errors.
+
+### 2B) Fault Vocabulary And Propagation
+- Claims carry a first-class `faults` section declaring emitted fault codes, affected needs/offers/constraints, propagation policy, evidence, and allowed remediation actions.
+- `FaultPropagationGate` deterministically evaluates a runtime `FaultSignal` against the source claim: undeclared faults do not propagate, `NONE` impact suppresses, and `DEGRADED`/`BLOCKED` impact propagates without runtime renegotiation.
+- Fault models serialize through the same snake_case JSON/YAML path as other public DCP records.
 
 ### 3) Manifest
 - Manifest generated from description validates against linked claim.

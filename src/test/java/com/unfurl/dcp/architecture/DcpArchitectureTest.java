@@ -7,6 +7,10 @@ import com.tngtech.archunit.lang.ArchRule;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
+/**
+ * Architecture test suite: enforces DCP package boundaries and enterprise
+ * guardrails that keep runtime code deterministic and adapter-neutral.
+ */
 @AnalyzeClasses(packages = "com.unfurl.dcp", importOptions = ImportOption.DoNotIncludeTests.class)
 class DcpArchitectureTest {
     @ArchTest
@@ -41,6 +45,7 @@ class DcpArchitectureTest {
             noClasses().that().resideInAnyPackage(
                             "..description..",
                             "..claim..",
+                            "..fault..",
                             "..manifest..",
                             "..runtimebinding..",
                             "..questions..",

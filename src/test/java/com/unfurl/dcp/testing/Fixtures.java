@@ -2,6 +2,7 @@ package com.unfurl.dcp.testing;
 
 import com.unfurl.dcp.claim.*;
 import com.unfurl.dcp.contract.*;
+import com.unfurl.dcp.fault.*;
 import com.unfurl.dcp.trust.SignedContract;
 import com.unfurl.dcp.trust.TrustTier;
 
@@ -12,6 +13,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Test fixture factory: centralizes valid DCP claims, contracts, signatures,
+ * and declared fault policies used across unit and property tests.
+ */
 public final class Fixtures {
     private Fixtures() {
     }
@@ -26,7 +31,24 @@ public final class Fixtures {
                 new ConflictResolution(List.of(), List.of(), false),
                 null,
                 new IntegrationPorts(Map.of()),
+                providerFaultPolicy(),
                 new ClaimMetadata("0.2.0", "1.0.0", Instant.EPOCH, Map.of()));
+    }
+
+    /**
+     * Fixture factory: declares one provider fault that degrades the parent
+     * graph when answer.search cannot satisfy its capability.
+     */
+    public static FaultPolicy providerFaultPolicy() {
+        return new FaultPolicy(List.of(new FaultDeclaration(
+                "answer.search.timeout",
+                FaultCategory.DEPENDENCY,
+                FaultSeverity.DEGRADED,
+                "Search provider timed out before satisfying answer.search",
+                new FaultAffects(List.of("answer.search"), List.of("answer.search"), List.of()),
+                new FaultEvidence(List.of(EvidenceSignal.INVOCATION_ERROR, EvidenceSignal.METRIC_THRESHOLD)),
+                new FaultPropagation(ParentImpact.DEGRADED, "active binding uses answer.search", "alternate provider healthy"),
+                new FaultRemediation(List.of("retry_with_backoff", "switch_provider")))));
     }
 
     public static CompositionContract validContract() {
