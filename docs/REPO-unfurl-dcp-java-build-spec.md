@@ -120,6 +120,7 @@ Required rule classes include:
 ### 2) Claim
 - YAML/JSON claim documents deserialize via Jackson and validate successfully.
 - Invalid claims (empty refusals, missing boundary principles, missing negotiation surface for intelligent component) fail validation with deterministic errors.
+- `faults` is always explicit in Java producers and claim YAML. Producers with no declared operational faults use `faults: { emitted: [] }`; constructors must not silently add it.
 
 ### 2B) Fault Vocabulary And Propagation
 - Claims carry a first-class `faults` section declaring emitted fault codes, affected needs/offers/constraints, propagation policy, evidence, and allowed remediation actions.

@@ -22,31 +22,11 @@ public record Claim(
         ClaimMetadata metadata
 ) {
     /**
-     * Internal convenience constructor: keeps in-repo factories concise while
-     * assigning the explicit empty DCP fault policy during active development.
-     */
-    public Claim(
-            Identity identity,
-            DomainAssertion domain,
-            List<Refusal> refusals,
-            Dependencies dependencies,
-            List<Offer> offers,
-            ConflictResolution conflictResolution,
-            NegotiationSurface negotiationSurface,
-            IntegrationPorts integrationPorts,
-            ClaimMetadata metadata
-    ) {
-        this(identity, domain, refusals, dependencies, offers, conflictResolution,
-                negotiationSurface, integrationPorts, FaultPolicy.empty(), metadata);
-    }
-
-    /**
-     * Compact constructor: freezes collections and normalizes omitted fault
-     * policy to an explicit empty policy for deterministic validation.
+     * Compact constructor: freezes repeated sections while preserving a missing
+     * fault policy so ClaimValidator can report the required-section diagnostic.
      */
     public Claim {
         refusals = refusals == null ? List.of() : List.copyOf(refusals);
         offers = offers == null ? List.of() : List.copyOf(offers);
-        faults = faults == null ? FaultPolicy.empty() : faults;
     }
 }

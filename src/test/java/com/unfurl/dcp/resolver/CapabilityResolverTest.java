@@ -59,7 +59,7 @@ class CapabilityResolverTest {
     private Claim providerWithOffers(Offer... offers) {
         Claim base = Fixtures.validProviderClaim();
         return new Claim(base.identity(), base.domain(), base.refusals(), base.dependencies(), List.of(offers),
-                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(),
+                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(), base.faults(),
                 new ClaimMetadata("0.2.0", base.identity().version(), Instant.EPOCH, Map.of()));
     }
 }

@@ -70,7 +70,7 @@ class CrossSchemaValidatorTest {
         Claim base = Fixtures.validProviderClaim();
         return new Claim(base.identity(), base.domain(), base.refusals(), base.dependencies(),
                 List.of(new Offer("answer.search", "Search", ConsumerAccess.ANY, null, Stability.STABLE, version, false, null)),
-                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(),
+                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(), base.faults(),
                 new ClaimMetadata("0.2.0", "1.0.0", Instant.EPOCH, Map.of()));
     }
 
@@ -78,7 +78,7 @@ class CrossSchemaValidatorTest {
         Claim base = Fixtures.validProviderClaim();
         Identity identity = new Identity(URI.create(uri), "Component", ComponentKind.COMPONENT, version, "Unfurl", URI.create("urn:publisher"));
         return new Claim(identity, base.domain(), base.refusals(), base.dependencies(), base.offers(),
-                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(),
+                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(), base.faults(),
                 new ClaimMetadata("0.2.0", version, Instant.EPOCH, Map.of()));
     }
 }

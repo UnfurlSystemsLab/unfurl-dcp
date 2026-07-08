@@ -27,12 +27,35 @@ class ClaimValidatorTest {
                 valid.conflictResolution(),
                 valid.negotiationSurface(),
                 valid.integrationPorts(),
+                valid.faults(),
                 new ClaimMetadata(null, "1.0.0", Instant.EPOCH, Map.of()));
 
         assertThat(new ClaimValidator().validate(missingDcpVersion).diagnostics())
                 .anySatisfy(diagnostic -> {
                     assertThat(diagnostic.code()).isEqualTo(ErrorCode.CLAIM_MALFORMED);
                     assertThat(diagnostic.fieldPath()).isEqualTo("metadata.dcp_version");
+                });
+    }
+
+    @Test
+    void missingFaultsReturnsStructuredDiagnostic() {
+        Claim valid = Fixtures.validProviderClaim();
+        Claim missingFaults = new Claim(
+                valid.identity(),
+                valid.domain(),
+                valid.refusals(),
+                valid.dependencies(),
+                valid.offers(),
+                valid.conflictResolution(),
+                valid.negotiationSurface(),
+                valid.integrationPorts(),
+                null,
+                valid.metadata());
+
+        assertThat(new ClaimValidator().validate(missingFaults).diagnostics())
+                .anySatisfy(diagnostic -> {
+                    assertThat(diagnostic.code()).isEqualTo(ErrorCode.FAULT_MALFORMED);
+                    assertThat(diagnostic.fieldPath()).isEqualTo("faults");
                 });
     }
 

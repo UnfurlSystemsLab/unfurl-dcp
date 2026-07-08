@@ -22,31 +22,11 @@ public record ComponentDescription(
         ComponentMetadata metadata
 ) {
     /**
-     * Internal convenience constructor: supplies an explicit empty fault policy
-     * for component descriptions that have not declared runtime faults yet.
-     */
-    public ComponentDescription(
-            Identity identity,
-            DomainAssertion domain,
-            List<Refusal> refusals,
-            Dependencies dependencies,
-            List<Offer> offers,
-            ConflictResolution conflictResolution,
-            NegotiationSurface negotiationSurface,
-            IntegrationPorts integrationPorts,
-            ComponentMetadata metadata
-    ) {
-        this(identity, domain, refusals, dependencies, offers, conflictResolution,
-                negotiationSurface, integrationPorts, FaultPolicy.empty(), metadata);
-    }
-
-    /**
-     * Compact constructor: freezes repeated sections and normalizes omitted
-     * fault declarations to a deterministic empty policy.
+     * Compact constructor: freezes repeated sections while preserving a missing
+     * fault policy so claim projection cannot hide a malformed description.
      */
     public ComponentDescription {
         refusals = refusals == null ? List.of() : List.copyOf(refusals);
         offers = offers == null ? List.of() : List.copyOf(offers);
-        faults = faults == null ? FaultPolicy.empty() : faults;
     }
 }

@@ -186,13 +186,14 @@ class DefaultCompositionBrokerTest {
     private Claim malformedClaim() {
         Claim base = Fixtures.validProviderClaim();
         return new Claim(base.identity(), null, base.refusals(), base.dependencies(), base.offers(),
-                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(), base.metadata());
+                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(), base.faults(),
+                base.metadata());
     }
 
     private Claim claimWithDcpVersion(String dcpVersion) {
         Claim base = Fixtures.validProviderClaim();
         return new Claim(base.identity(), base.domain(), base.refusals(), base.dependencies(), base.offers(),
-                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(),
+                base.conflictResolution(), base.negotiationSurface(), base.integrationPorts(), base.faults(),
                 new ClaimMetadata(dcpVersion, base.identity().version(), Instant.EPOCH, Map.of()));
     }
 

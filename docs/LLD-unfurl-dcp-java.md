@@ -328,6 +328,10 @@ public record NegotiationSurface(
 ) { ... }
 ```
 
+`faults` is a required top-level claim section even when it is empty. The Java record does not provide a
+backward-compatible constructor that omits it; all claim producers must pass either a declared `FaultPolicy`
+or `FaultPolicy.empty()` explicitly so missing fault vocabulary is caught during integration.
+
 `ClaimValidator` is a Jakarta-based service that enforces HLD-C2 §F's claim rules:
 
 - All required sections present; `refusals` and `boundaryPrinciples` non-empty.

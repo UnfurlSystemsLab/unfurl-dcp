@@ -54,6 +54,7 @@ class CapabilityResolverPropertyTest {
                 new ConflictResolution(List.of(), List.of(), false),
                 null,
                 new IntegrationPorts(Map.of()),
+                com.unfurl.dcp.fault.FaultPolicy.empty(),
                 new ClaimMetadata("0.2.0", "1.0.0", Instant.EPOCH, Map.of()));
     }
 }
