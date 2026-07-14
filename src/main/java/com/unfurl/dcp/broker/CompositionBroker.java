@@ -13,10 +13,23 @@ import com.unfurl.substrate.policy.ExecutionContext;
  */
 public interface CompositionBroker {
     /**
-     * Strategy entry point: validates a provider claim and maps it to an accepted or refused
-     * disposition using only the injected frozen-contract store and offline verifier.
+     * Strategy entry point: validates a provider claim and maps one requested provider capability
+     * to an accepted or refused disposition using only the injected frozen-contract store and
+     * offline verifier.
      */
-    Disposition present(Claim claim, ExecutionContext context);
+    Disposition present(Claim claim, String providerCapability, ExecutionContext context);
+
+    /**
+     * Convenience strategy for single-offer providers. Multi-offer providers must use the
+     * capability-specific overload so runtime acceptance remains deterministic.
+     */
+    default Disposition present(Claim claim, ExecutionContext context) {
+        String capability = null;
+        if (claim != null && claim.offers() != null && claim.offers().size() == 1 && claim.offers().get(0) != null) {
+            capability = claim.offers().get(0).capability();
+        }
+        return present(claim, capability, context);
+    }
 
     /**
      * Adapter handoff: re-fetches and re-verifies an accepted contract before registering its

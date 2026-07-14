@@ -5,12 +5,16 @@ import com.unfurl.dcp.validation.Diagnostic;
 import com.unfurl.dcp.validation.ErrorCode;
 import com.unfurl.dcp.validation.SchemaValidationReport;
 
+import java.net.URI;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -90,6 +94,33 @@ public final class RuntimeBindingValidator {
     }
 
     /**
+     * Composite validator: walks an aggregate runtime binding tree through metadata child refs,
+     * validating every binding against its loaded contract and applying the secret/firewall checks to
+     * the full subtree. Missing child refs or cycles are hard errors because deployment packaging
+     * must not silently drop governed runtime edges.
+     *
+     * @param root          the aggregate or leaf runtime binding to validate.
+     * @param bindingsById  repository of loaded runtime bindings keyed by {@code bindingId}.
+     * @param contractsById repository of loaded contracts keyed by {@code contractId}.
+     * @return accumulated validation report for the whole tree.
+     */
+    public SchemaValidationReport validateTree(
+            RuntimeBinding root,
+            Map<URI, RuntimeBinding> bindingsById,
+            Map<URI, CompositionContract> contractsById
+    ) {
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        if (root == null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "runtime binding is required", "$"));
+            return new SchemaValidationReport(diagnostics);
+        }
+        walk(root, bindingsById == null ? Map.of() : bindingsById,
+                contractsById == null ? Map.of() : contractsById,
+                new ArrayDeque<>(), new LinkedHashSet<>(), diagnostics);
+        return new SchemaValidationReport(diagnostics);
+    }
+
+    /**
      * Recursive scanner: walks free-form configuration maps and collections because deployment
      * adapters may carry nested control blocks; every discovered secret-like value or forbidden key
      * is reported with a stable field path.
@@ -118,6 +149,62 @@ public final class RuntimeBindingValidator {
                 }
             }
         }
+    }
+
+    /**
+     * Recursive composite walker: validates one binding, then follows deterministic child refs from
+     * {@link RuntimeBindingMetadata}. The path guard reports cycles at the edge where they are found.
+     */
+    private void walk(
+            RuntimeBinding binding,
+            Map<URI, RuntimeBinding> bindingsById,
+            Map<URI, CompositionContract> contractsById,
+            ArrayDeque<URI> path,
+            Set<URI> visited,
+            List<Diagnostic> diagnostics
+    ) {
+        URI bindingId = binding.bindingId();
+        if (bindingId == null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "binding_id is required", "binding_id"));
+            return;
+        }
+        if (path.contains(bindingId)) {
+            diagnostics.add(Diagnostic.error(ErrorCode.BINDING_CONTAINMENT_CYCLE,
+                    "runtime binding containment cycle at " + bindingId,
+                    "metadata.extensions"));
+            return;
+        }
+        if (!visited.add(bindingId)) {
+            return;
+        }
+
+        CompositionContract contract = contractsById.get(binding.contractId());
+        if (contract == null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.BINDING_CONTRACT_MISSING,
+                    "runtime binding contract_id is not loaded: " + binding.contractId(),
+                    "contract_id"));
+        }
+        diagnostics.addAll(validate(binding, contract).diagnostics());
+
+        path.addLast(bindingId);
+        for (URI childId : childBindingIds(binding)) {
+            RuntimeBinding child = bindingsById.get(childId);
+            if (child == null) {
+                diagnostics.add(Diagnostic.error(ErrorCode.BINDING_CHILD_MISSING,
+                        "contained runtime binding is not loaded: " + childId,
+                        "metadata.extensions"));
+                continue;
+            }
+            walk(child, bindingsById, contractsById, path, visited, diagnostics);
+        }
+        path.removeLast();
+    }
+
+    /**
+     * Child-reference accessor: treats missing metadata as a leaf binding.
+     */
+    private List<URI> childBindingIds(RuntimeBinding binding) {
+        return binding.metadata() == null ? List.of() : binding.metadata().childBindingIds();
     }
 
     /**

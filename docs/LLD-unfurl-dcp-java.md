@@ -189,7 +189,7 @@ broker
 
 spi
   contains:
-    ContractStore (interface), ContractInvocableFactory (interface),
+    ContractStore (interface; provider claim + capability lookup), ContractInvocableFactory (interface),
     CapabilityRegistrar (interface) — DCP's mutable registration port that hosts
         implement on top of their mutable capability manager/registry implementation,
     BrokerEventSink (interface), NoopBrokerEventSink (default)
@@ -429,7 +429,8 @@ public record CompositionContract(
         Parties parties, Binding binding,
         DataMapping dataMapping, Transport transport,
         Expectations expectations, Provenance provenance,
-        Trust trust, Invalidation invalidation
+        Trust trust, Invalidation invalidation,
+        CompositionContractMetadata metadata
 ) { ... }
 
 public record Parties(Party consumer, Party provider) { ... }
@@ -455,6 +456,7 @@ public enum NegotiationMode { C2C, H2C, H2H }
 
 public record Trust(TrustTier tier) { ... }
 public enum TrustTier { NEUTRAL, SELF }
+public record CompositionContractMetadata(Map<String, Object> extensions) { ... }
 
 public record Invalidation(
         List<InvalidationTrigger> triggers, RuntimeViolationPolicy onRuntimeViolation
@@ -499,6 +501,9 @@ Validation rules (HLD-C2 §F) enforced by `ContractValidator`:
 - Trust derivation: `trust.tier == SELF` iff `provenance.createdBy == EMBEDDED_SELF`; otherwise `NEUTRAL`.
 - `invalidation.onRuntimeViolation == HARD_FAIL` (no other value accepted).
 - Cross-schema: the contract's `binding.providerCapability` exists in the provider's claim at a version satisfying `binding.providerCapabilityVersion`.
+- Aggregate containment: contract metadata uses the same recursive DCP bridge keys as claims (`contains`, `children`, `containsClaimUris`, `childClaimUris`). Child values may be URI strings or maps with `contractId`, `claimUri`, `uri`, or `ref`. `ContractValidator.validateTree(root, contractsById)` walks the contract tree, validates every child, and rejects missing child refs and cycles.
+
+Fabric compilers that produce multi-component assemblies must emit a DCP contract closure: an aggregate parent contract whose metadata references child `CompositionContract` records. Private planning metadata such as a binding plan can remain diagnostic, but it is not a substitute for referenced child contracts.
 
 ### Runtime Binding (HLD-C2 §C)
 
@@ -513,7 +518,8 @@ public record RuntimeBinding(
         RuntimePolicy runtimePolicy,
         Configuration configuration,
         DeploymentControls deploymentControls,
-        Lifecycle lifecycle
+        Lifecycle lifecycle,
+        RuntimeBindingMetadata metadata
 ) { ... }
 
 public record ProviderInstance(
@@ -525,6 +531,7 @@ public enum DeploymentKind { IN_PROCESS, CONTAINER, REMOTE_SERVICE, EXTERNAL_SAA
 
 public record SecretRef(@NotBlank String uri) { ... }       // reference only
 public record ConfigRef(@NotBlank String uri) { ... }
+public record RuntimeBindingMetadata(Map<String, Object> extensions) { ... }
 ```
 
 `RuntimeBindingValidator` enforces:
@@ -534,6 +541,9 @@ public record ConfigRef(@NotBlank String uri) { ... }
 - **No inline secrets.** Any literal credential value (a non-`SecretRef` field carrying anything that looks like a credential) fails validation. Secrets are *references only*.
 - **Runtime-policy firewall.** Runtime binding may set `enabled`, timeouts within contract-permitted bounds, retry/circuit-breaker references, telemetry namespace, and audit flag — it MUST NOT change claim ownership, dependency satisfaction, conflict decisions, trust tier, or invalidation rules. The validator rejects any binding field that attempts to override these.
 - `baseUrl` and `baseUrlRef` mutually exclusive; `baseUrlRef` preferred outside local development.
+- **Aggregate containment.** Runtime binding metadata uses the same extension bridge as recursive claims: `contains`, `children`, `containsClaimUris`, and `childClaimUris`. Child values may be URI strings or maps with `bindingId`, `claimUri`, `uri`, or `ref`. `RuntimeBindingValidator.validateTree(root, bindingsById, contractsById)` walks the binding tree, validates every child binding, rejects missing child refs and cycles, and applies the inline-secret/runtime-policy firewall across the whole subtree.
+
+This keeps multi-component runtime assembly inside DCP constructs. Products such as Fabric/Flowfoundry may generate an aggregate parent binding, but they must not add product-specific runtime-wiring sidecars; every child edge is a DCP containment ref to another normal runtime binding.
 
 ### Negotiation Question Schema (HLD-C2 §E)
 
@@ -769,7 +779,10 @@ In `com.unfurl.dcp.spi`:
 
 ```java
 public interface ContractStore {
-    Optional<FrozenContract> findByProvider(URI providerClaimUri, String providerClaimVersion);
+    Optional<FrozenContract> findByProvider(
+        URI providerClaimUri,
+        String providerClaimVersion,
+        String providerCapability);
     Optional<FrozenContract> findById(URI contractId, String contractVersion);
 }
 
@@ -802,7 +815,7 @@ public interface BrokerEventSink {
 
 Concrete adapters live above this layer:
 
-- A `FileContractStore` reading frozen contracts from a directory (typical Fabric-emitted deployable).
+- A `FileContractStore` reading frozen contracts from a directory (typical Fabric-emitted deployable). It indexes by provider claim uri/version plus provider capability so multi-offer providers resolve the exact child contract requested by a runtime binding.
 - A `ClasspathContractStore` for embedded test/demo cases.
 - Host products (flow, foundry) implement `CapabilityRegistrar` over their own mutable capability manager/registry implementation and inject a `ContractInvocableFactory` that produces invocables backed by their AI executors (`foundry-substrate-offers`' `AgentInvocation` / `ToolInvocation` / `RagInvocation`).
 
@@ -814,11 +827,11 @@ Concrete adapters live above this layer:
 
 This is the runtime view, from the broker's side, of the lifecycle described in `unfurl-foundry-substrate/docs/HLD-unfurl-foundry-substrate.md` §5.
 
-The broker's collaborators are all **constructor-injected** at construction time: a `ContractStore`, an `OfflineContractVerifier`, a `VerificationKeySet`, a `ClaimValidator`, and a `BrokerEventSink`. There is no static lookup, no service-loader, and no method-time injection of verifier or keys — `present(claim, context)` therefore takes only what is genuinely call-scoped.
+The broker's collaborators are all **constructor-injected** at construction time: a `ContractStore`, an `OfflineContractVerifier`, a `VerificationKeySet`, a `ClaimValidator`, and a `BrokerEventSink`. There is no static lookup, no service-loader, and no method-time injection of verifier or keys. Runtime presentation is capability-specific: `present(claim, providerCapability, context)` validates that the claim offers the requested capability, then looks up the matching frozen child contract by provider claim uri/version plus that capability. The convenience `present(claim, context)` path is valid only for single-offer claims.
 
 Given an in-process host (flow or foundry) and a `CompositionBroker` instance:
 
-1. A component is presented to the host. The host calls `broker.present(claim, context)`.
+1. A component capability is presented to the host. The host calls `broker.present(claim, providerCapability, context)`.
 2. The broker validates the claim shape (`ClaimValidator`) and asserts `metadata.dcpVersion` is supported.
 3. The broker queries its `ContractStore` for a frozen contract whose provider matches the claim's identity. The store is content-addressable: lookup by `(providerClaimUri, providerClaimVersion)` is O(1).
 4. If a match exists, the broker verifies the contract's offline signature via its `OfflineContractVerifier` against its `VerificationKeySet`. A verification failure produces `Disposition(REFUSE, reasonCode = SIGNATURE_INVALID)`.

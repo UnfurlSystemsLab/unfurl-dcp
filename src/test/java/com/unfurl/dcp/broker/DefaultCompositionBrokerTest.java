@@ -47,6 +47,35 @@ class DefaultCompositionBrokerTest {
     }
 
     @Test
+    void presentSelectsRequestedCapabilityForMultiOfferProvider() throws Exception {
+        KeyPair keyPair = keyPair();
+        InMemoryContractStore store = new InMemoryContractStore();
+        store.put(Fixtures.frozenContract(keyPair, "agent.run"));
+        store.put(Fixtures.frozenContract(keyPair, "tool.call"));
+        DefaultCompositionBroker broker = broker(store, keyPair, new RecordingBrokerEventSink());
+
+        Disposition disposition = broker.present(
+                Fixtures.validProviderClaim("agent.run", "tool.call"),
+                "agent.run",
+                ExecutionContext.empty());
+
+        assertThat(disposition.kind()).isEqualTo(DispositionKind.ACCEPT);
+        assertThat(disposition.matchedContractId().toString()).isEqualTo("urn:contract:agent-run");
+    }
+
+    @Test
+    void presentRefusesAmbiguousMultiOfferProviderWithoutRequestedCapability() throws Exception {
+        DefaultCompositionBroker broker = broker(new InMemoryContractStore(), keyPair(), new RecordingBrokerEventSink());
+
+        Disposition disposition = broker.present(
+                Fixtures.validProviderClaim("agent.run", "tool.call"),
+                ExecutionContext.empty());
+
+        assertThat(disposition.kind()).isEqualTo(DispositionKind.REFUSE);
+        assertThat(disposition.reasonCode()).isEqualTo(DispositionReason.CAPABILITY_AMBIGUOUS);
+    }
+
+    @Test
     void presentRefusesWhenNoContractMatchesAndReturnsPrecomputedRedirection() throws Exception {
         RecordingBrokerEventSink events = new RecordingBrokerEventSink();
         DefaultCompositionBroker broker = broker(new InMemoryContractStore(), keyPair(), events);
@@ -120,7 +149,7 @@ class DefaultCompositionBrokerTest {
         FrozenContract frozen = Fixtures.frozenContract(keyPair);
         ContractStore staleStore = new ContractStore() {
             @Override
-            public Optional<FrozenContract> findByProvider(URI providerClaimUri, String providerClaimVersion) {
+            public Optional<FrozenContract> findByProvider(URI providerClaimUri, String providerClaimVersion, String providerCapability) {
                 return Optional.of(frozen);
             }
 

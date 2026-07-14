@@ -368,9 +368,18 @@ contract:
   invalidation:                # required  (settled #2)
     triggers: list<enum[claim_version_changed, pattern_unsupported, runtime_assumption_violated]>
     on_runtime_violation: enum[hard_fail]   # settled: hard_fail only; no runtime self-heal
+
+  metadata:                    # optional
+    extensions:
+      contains: [uri | {ref: uri}]?
+      children: [uri | {ref: uri}]?
+      containsClaimUris: [uri | {claimUri: uri}]?
+      childClaimUris: [uri | {claimUri: uri}]?
 ```
 
 Rules:
+- Aggregate contracts use the same DCP containment bridge as aggregate claims. A parent contract references child contracts with `metadata.extensions.contains`, `children`, `containsClaimUris`, or `childClaimUris`; each child remains a normal composition contract with its own parties, binding, transport, expectations, provenance, trust, and invalidation.
+- Assembly compilers MUST NOT represent child contract closure only as private planner metadata. A deployable multi-component contract is a DCP contract tree: aggregate parent contract plus referenced child contracts.
 - `parties.*.claim_version` are PINNED. If either changes, the contract is invalidated and must be re-negotiated at design-time.
 - `transport.kind == in_process` is valid ONLY when the parties are co-packaged into one deployable. Fabric sets this at packaging time.
 - `provenance.mode == c2c` REQUIRES `model_id`. `mode == h2c` REQUIRES `human_in_loop == true`.
@@ -436,6 +445,13 @@ runtime_binding:
     created_at: timestamp
     updated_by: string?
     updated_at: timestamp?
+
+  metadata:                       # optional
+    extensions:
+      contains: [uri | {ref: uri}]?
+      children: [uri | {ref: uri}]?
+      containsClaimUris: [uri | {claimUri: uri}]?
+      childClaimUris: [uri | {claimUri: uri}]?
 ```
 
 Rules:
@@ -445,6 +461,8 @@ Rules:
 - Runtime binding may disable a binding with `runtime_policy.enabled: false`, but it cannot alter claim ownership, dependency satisfaction, conflict decisions, trust tier, or invalidation rules.
 - Environment-specific values belong here, not in the claim or composition contract.
 - `base_url` and `base_url_ref` are mutually exclusive. Prefer `base_url_ref` outside local development.
+- Aggregate runtime bindings use the same DCP containment bridge as aggregate claims. Parent bindings reference child runtime bindings with `metadata.extensions.contains`, `children`, `containsClaimUris`, or `childClaimUris`; child bindings remain normal runtime bindings with their own contract pins, endpoint/config refs, secret refs, and runtime policy.
+- Assembly-level products MUST NOT introduce product-specific runtime wiring sections for child bindings. A multi-component deployment is represented as a DCP runtime-binding tree: one aggregate parent binding plus referenced child bindings, all resolved by walking the DCP containment refs.
 
 Example:
 

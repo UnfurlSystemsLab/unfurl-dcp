@@ -6,6 +6,8 @@ package com.unfurl.dcp.broker;
  */
 public enum DispositionReason {
     MATCH_FOUND,
+    CAPABILITY_NOT_REQUESTED,
+    CAPABILITY_AMBIGUOUS,
     NO_MATCHING_CONTRACT,
     SIGNATURE_INVALID,
     CLAIM_MALFORMED,

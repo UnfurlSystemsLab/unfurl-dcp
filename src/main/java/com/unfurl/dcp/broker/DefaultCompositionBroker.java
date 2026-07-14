@@ -61,7 +61,7 @@ public final class DefaultCompositionBroker implements CompositionBroker {
      * every other path is represented as a refusal reason.
      */
     @Override
-    public Disposition present(Claim claim, ExecutionContext context) {
+    public Disposition present(Claim claim, String providerCapability, ExecutionContext context) {
         publish(BrokerEventType.CLAIM_PRESENTED, claim == null || claim.identity() == null ? null : claim.identity().uri(), null, null, null, context);
         SchemaValidationReport validation = claimValidator.validate(claim);
         if (!validation.valid()) {
@@ -74,9 +74,25 @@ public final class DefaultCompositionBroker implements CompositionBroker {
             return disposition;
         }
 
-        return contractStore.findByProvider(claim.identity().uri(), claim.identity().version())
-                .map(frozen -> verifiedDisposition(claim, frozen, context))
-                .orElseGet(() -> noMatchingContract(claim, context));
+        String capability = requestedCapability(claim, providerCapability, context);
+        if (capability == null) {
+            return Disposition.refuse(
+                    DispositionReason.CAPABILITY_AMBIGUOUS,
+                    "provider capability is required for multi-offer claims",
+                    null);
+        }
+        if (!offersCapability(claim, capability)) {
+            publish(BrokerEventType.DISPOSITION_REFUSED, claim.identity().uri(), null, capability,
+                    DispositionReason.CAPABILITY_NOT_REQUESTED, context);
+            return Disposition.refuse(
+                    DispositionReason.CAPABILITY_NOT_REQUESTED,
+                    "provider claim does not offer capability: " + capability,
+                    null);
+        }
+
+        return contractStore.findByProvider(claim.identity().uri(), claim.identity().version(), capability)
+                .map(frozen -> verifiedDisposition(claim, frozen, capability, context))
+                .orElseGet(() -> noMatchingContract(claim, capability, context));
     }
 
     /**
@@ -154,10 +170,10 @@ public final class DefaultCompositionBroker implements CompositionBroker {
      * Verification helper: maps the frozen contract signature result into the accepted/refused
      * disposition shape while preserving correlation through the event sink.
      */
-    private Disposition verifiedDisposition(Claim claim, FrozenContract frozen, ExecutionContext context) {
+    private Disposition verifiedDisposition(Claim claim, FrozenContract frozen, String providerCapability, ExecutionContext context) {
         VerificationResult result = verifier.verify(frozen.signedContract(), keySet);
         if (!result.valid()) {
-            publish(BrokerEventType.DISPOSITION_REFUSED, claim.identity().uri(), frozen.contract().contractId(), null, DispositionReason.SIGNATURE_INVALID, context);
+            publish(BrokerEventType.DISPOSITION_REFUSED, claim.identity().uri(), frozen.contract().contractId(), providerCapability, DispositionReason.SIGNATURE_INVALID, context);
             return Disposition.refuse(DispositionReason.SIGNATURE_INVALID, result.reason(), null);
         }
         publish(BrokerEventType.DISPOSITION_ACCEPTED, claim.identity().uri(), frozen.contract().contractId(), frozen.contract().binding().providerCapability(), DispositionReason.MATCH_FOUND, context);
@@ -168,14 +184,40 @@ public final class DefaultCompositionBroker implements CompositionBroker {
      * Refusal helper: uses fabric's precomputed ownership redirection from the provider claim when
      * no frozen contract exists, keeping runtime behavior deterministic and explanation-bearing.
      */
-    private Disposition noMatchingContract(Claim claim, ExecutionContext context) {
+    private Disposition noMatchingContract(Claim claim, String providerCapability, ExecutionContext context) {
         String redirection = claim.refusals().stream()
                 .map(refusal -> refusal.ownedBy())
                 .filter(Objects::nonNull)
                 .findFirst()
                 .orElse(null);
-        publish(BrokerEventType.DISPOSITION_REFUSED, claim.identity().uri(), null, null, DispositionReason.NO_MATCHING_CONTRACT, context);
-        return Disposition.refuse(DispositionReason.NO_MATCHING_CONTRACT, "no matching frozen contract", redirection);
+        publish(BrokerEventType.DISPOSITION_REFUSED, claim.identity().uri(), null, providerCapability, DispositionReason.NO_MATCHING_CONTRACT, context);
+        return Disposition.refuse(DispositionReason.NO_MATCHING_CONTRACT, "no matching frozen contract for capability: " + providerCapability, redirection);
+    }
+
+    /**
+     * Capability selector: preserves the ergonomic single-offer path while forcing multi-offer
+     * providers to name the exact offer being accepted.
+     */
+    private String requestedCapability(Claim claim, String providerCapability, ExecutionContext context) {
+        if (providerCapability != null && !providerCapability.isBlank()) {
+            return providerCapability;
+        }
+        if (claim.offers().size() == 1 && claim.offers().get(0) != null) {
+            return claim.offers().get(0).capability();
+        }
+        publish(BrokerEventType.DISPOSITION_REFUSED, claim.identity().uri(), null, null,
+                DispositionReason.CAPABILITY_AMBIGUOUS, context);
+        return null;
+    }
+
+    /**
+     * Offer guard: ensures the runtime binding cannot accept a capability outside the validated
+     * provider claim.
+     */
+    private boolean offersCapability(Claim claim, String providerCapability) {
+        return claim.offers().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(offer -> Objects.equals(offer.capability(), providerCapability));
     }
 
     /**

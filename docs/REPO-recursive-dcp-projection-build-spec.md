@@ -67,6 +67,30 @@ composition.kind
 
 Until then, the extension keys above are the canonical bridge.
 
+## Runtime Binding Aggregation
+
+The same containment bridge applies to DCP runtime bindings. A deployed environment that contains
+multiple contract/runtime edges is modeled as an aggregate parent runtime binding whose
+`metadata.extensions` references child runtime binding ids through `contains`, `children`,
+`containsClaimUris`, or `childClaimUris`. Each child remains a normal DCP runtime binding with its own
+contract pin, provider/consumer instance, endpoint/config refs, secret refs, and runtime policy.
+
+Products MUST NOT add product-specific runtime closure sections to represent child bindings. The
+portable representation is the DCP binding tree, and validators/projectors walk the child refs the same
+way claim aggregation walks child claim refs.
+
+## Contract Aggregation
+
+The same containment bridge also applies to DCP composition contracts. A multi-component composition is
+represented as an aggregate parent contract whose `metadata.extensions` references child
+`CompositionContract` ids through `contains`, `children`, `containsClaimUris`, or `childClaimUris`.
+Each child contract remains a normal two-party composition contract. Runtime binding aggregation then
+mirrors the contract tree: parent binding contains child bindings, and each child binding pins the
+corresponding child contract.
+
+Binding plans, deployment-resolution responses, and other planner diagnostics may explain why a child
+contract was selected, but they must not be the only representation of a governed child edge.
+
 ## Verification
 
 - DCP unit tests cover recursive descendants, cycle guards, missing refs, focus fallback, and depth caps.

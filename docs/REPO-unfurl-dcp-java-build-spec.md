@@ -54,6 +54,29 @@ Recommended layering:
 
 ---
 
+## Adapter Authoring Source Of Truth
+
+The canonical `AGENTS.md` template for DCP adapter and substrate-component authors lives at:
+
+```text
+unfurl-dcp/docs/templates/AGENTS-dcp-adapter.md
+```
+
+External OSS adapters and new substrate-component repos should copy that file as their local
+`AGENTS.md` before adding repository-specific build commands. The template encodes the DCP boundary
+rules that every adapter must follow:
+
+- DCP capabilities expose `ContractInvocable` / `ContractInvocableFactory`.
+- The broker registers accepted capabilities through `CapabilityRegistrar`.
+- Host runtimes adapt accepted `ContractInvocable` instances to native execution surfaces such as
+  Flow `NodeExecutor`, HTTP handlers, queue consumers, or function handlers.
+- Java annotations (`@DcpCapability`, `@DcpExecutionAdapter`) may aid discovery and consistency
+  validation, but DCP claim, contract, runtime binding, catalog metadata, and Java interfaces
+  remain authoritative.
+- Product/vendor implementations stay behind adapters and ports; DCP core remains host-neutral.
+
+---
+
 ## Dependency Guidance (Java)
 
 **Internal:**
@@ -138,11 +161,13 @@ Required rule classes include:
 - Provenance fields are validated by mode (`c2c` requires model metadata; `h2c` requires human-in-loop marker).
 - Trust tier is derivable and non-contradictory.
 - Invalid or tampered proof fails offline verification.
+- Aggregate contracts reuse the recursive DCP containment bridge in metadata extensions (`contains`, `children`, `containsClaimUris`, `childClaimUris`) to reference child contract ids. Tree validation fails on missing child refs or cycles. Product/private planner metadata is not a valid substitute for child DCP contracts.
 
 ### 4B) Runtime Binding
 - Binding links to real contract id/version and matching party versions.
 - Inline secrets are rejected; reference-only secret strategy enforced.
 - Runtime policy cannot alter ownership/dependency/conflict/trust/invalidation decisions.
+- Aggregate runtime bindings reuse the recursive DCP containment bridge in metadata extensions (`contains`, `children`, `containsClaimUris`, `childClaimUris`) to reference child runtime binding ids. Tree validation fails on missing child refs, cycles, or inline secrets in any descendant. Product-specific runtime closure sidecars are not valid substitutes for child DCP runtime bindings.
 
 ### 5) Resolver + Versioning
 - Compatible need/capability pair resolves.
@@ -166,7 +191,7 @@ Required rule classes include:
 - Broker events carry metadata only by default and propagate correlation ids through the broker path.
 
 ### 9) SPI
-- `ContractStore` provides deterministic frozen-contract lookup by provider claim identity and by contract id/version.
+- `ContractStore` provides deterministic frozen-contract lookup by provider claim identity plus provider capability, and by contract id/version. Provider identity alone is not a valid runtime lookup key because a single claim can publish multiple offers such as `agent.run`, `rag.search`, and `tool.call`.
 - `ContractInvocableFactory` materializes the host executor for the contract's single binding without making DCP depend on host products.
 - `CapabilityRegistrar` is the only mutable registration port used by the broker; the broker must not import or mutate substrate's read-only `CapabilityRegistry`.
 - `BrokerEventSink` defaults to `NoopBrokerEventSink`, which performs no I/O.

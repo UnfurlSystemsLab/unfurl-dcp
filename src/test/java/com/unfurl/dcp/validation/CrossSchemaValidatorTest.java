@@ -60,7 +60,7 @@ class CrossSchemaValidatorTest {
     @Test
     void validatesRuntimeBindingContractPin() {
         RuntimeBinding binding = new RuntimeBinding(URI.create("urn:binding"), URI.create("urn:other"), "1.0.0",
-                null, null, null, null, new Configuration(Map.of()), new DeploymentControls(Map.of()), null);
+                null, null, null, null, new Configuration(Map.of()), new DeploymentControls(Map.of()), null, null);
 
         assertThat(validator.validate(binding, Fixtures.validContract()).diagnostics())
                 .anySatisfy(diagnostic -> assertThat(diagnostic.fieldPath()).isEqualTo("contract_id"));

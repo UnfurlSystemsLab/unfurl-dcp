@@ -131,7 +131,7 @@ Implement `unfurl_dcp/manifest/` per HLD-C2 §C.
 
 Implement `unfurl_dcp/contract/` per HLD-C2 §B.
 
-- Typed contract model: parties (pinned claim versions), binding, data_mapping, transport, expectations, provenance, trust, invalidation.
+- Typed contract model: parties (pinned claim versions), binding, data_mapping, transport, expectations, provenance, trust, invalidation, and metadata/extensions for aggregate child contract refs.
 - `freeze(contract) -> FrozenContract`: produces the immutable canonical artifact. Once frozen, mutation raises. **`FrozenContract` MUST implement the `ContractInvocable` interface defined in `unfurl-substrate` (substrate Phase 9)** — this is how the substrate's in-process composition mechanism executes a contract without importing dcp (dependency inversion: substrate defines the interface, dcp satisfies it).
 - `load(serialized) -> FrozenContract`.
 - `verify(frozen_contract, fabric_public_key) -> ok | fail`: offline verification of the contract's `proof` (HLD-E §1) — checks the signature against the configured Fabric public key AND recomputes `integrity_hash` against the governed definition. Pure crypto; NO network call; NO model. This is the runtime's tamper-evidence check (verification of a design-time decision), not authorization.
@@ -143,6 +143,9 @@ Implement `unfurl_dcp/contract/` per HLD-C2 §B.
   - provenance consistency (c2c⇒model_id, h2c⇒human_in_loop);
   - trust tier consistent with authored_by;
   - `on_runtime_violation == hard_fail` (the only allowed value).
+  - aggregate contract trees are walked recursively; missing child refs and containment cycles fail validation.
+
+Multi-component deployables are represented as DCP contract trees: an aggregate parent contract contains child composition contracts through the same recursive DCP bridge keys (`contains`, `children`, `containsClaimUris`, `childClaimUris`). Private planner metadata may be emitted for diagnostics, but it is not a substitute for referenced child contracts.
 
 **Acceptance criteria:**
 - A contract can be built, frozen, serialized, and reloaded byte-stably.
@@ -151,25 +154,29 @@ Implement `unfurl_dcp/contract/` per HLD-C2 §B.
 - A contract setting `on_runtime_violation` to anything but `hard_fail` fails.
 - `trust.tier` is auto-derived and cannot contradict provenance.
 - A contract with an invalid or missing `proof` fails verification; a tampered definition (integrity-hash mismatch) fails; verification makes no network call.
+- A parent contract containing child contract refs validates when every child is loaded and fails on missing refs or cycles.
 
 ### Phase 4B — Runtime binding
 
 Implement `unfurl_dcp/runtime_binding/` per HLD-C2 §C. The runtime binding is the environment-specific, mutable wiring of an (immutable) contract: the contract says *what is allowed*; the binding says *where and how it runs*.
 
 - Typed model: binding_id, contract_id, contract_version, target_environment (environment/tenant/region/namespace), provider_instance (deployment_kind, `base_url_ref`, `credentials_ref`), consumer_instance, runtime_policy (enabled, timeouts, retry/circuit-breaker/rate-limit refs, telemetry_namespace, audit_enabled), configuration (values + `config_refs`), deployment_controls, lifecycle.
+- Runtime binding metadata/extensions for aggregate containment, reusing the recursive DCP bridge keys `contains`, `children`, `containsClaimUris`, and `childClaimUris`. Child refs may point to other runtime binding ids as URI strings or maps with `bindingId`, `claimUri`, `uri`, or `ref`.
 - Validator enforcing HLD-C2 §C / §G runtime-binding rules:
   - `contract_id` references an existing contract; `contract_version` matches; party versions match the contract;
   - **secrets are references only** — inline secret values are rejected (residency/safety critical);
   - `base_url` and `base_url_ref` are mutually exclusive; prefer `base_url_ref` outside local dev;
   - **runtime policy can disable a binding but CANNOT change ownership, dependency, conflict, trust, or invalidation decisions** — this is the design-time/runtime firewall enforced at the schema level.
+  - aggregate binding trees are walked recursively; missing children, cycles, and inline secrets anywhere in the subtree fail validation.
 
-This is the schema Fabric's binding compiler produces and bakes into a deployable. One frozen contract may have many runtime bindings (dev/staging/prod, per-tenant, per-region).
+This is the schema Fabric's binding compiler produces and bakes into a deployable. One frozen contract may have many runtime bindings (dev/staging/prod, per-tenant, per-region). A multi-component environment is represented as a DCP runtime-binding tree: an aggregate parent binding contains child runtime bindings by reference. Product-specific sections such as `flowfoundry_runtime` are not schema-valid substitutes for child DCP bindings.
 
 **Acceptance criteria:**
 - A binding referencing a real contract validates; one with a mismatched contract version fails.
 - An inline secret value (not a reference) fails validation.
 - A binding attempting to alter an ownership/trust/invalidation decision fails.
 - The same contract supports multiple bindings with different environments/secrets/scaling.
+- A parent binding containing child binding refs validates when every child is loaded, and fails on missing child refs, containment cycles, or inline secrets in any descendant.
 
 ### Phase 5 — Need→capability resolver and versioning
 

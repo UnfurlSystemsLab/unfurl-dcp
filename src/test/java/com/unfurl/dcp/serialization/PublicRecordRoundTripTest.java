@@ -120,7 +120,8 @@ class PublicRecordRoundTripTest {
                 new RuntimePolicy(true, 1000, "test", true),
                 new Configuration(Map.of("setting", "value")),
                 new DeploymentControls(Map.of("replicas", 1)),
-                new Lifecycle(true));
+                new Lifecycle(true),
+                new RuntimeBindingMetadata(Map.of("contains", List.of("urn:binding:child"))));
     }
 
     private static ObjectMapper yamlMapper() {
