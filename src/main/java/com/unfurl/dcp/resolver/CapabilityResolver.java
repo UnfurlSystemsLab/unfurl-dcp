@@ -5,9 +5,10 @@ import com.unfurl.dcp.claim.Offer;
 import com.unfurl.dcp.validation.ErrorCode;
 import com.unfurl.dcp.versioning.SemverHelpers;
 
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Comparator;
 
 /**
  * Strategy: performs deterministic need-to-capability matching across provider claims. It only
@@ -16,6 +17,7 @@ import java.util.Objects;
  */
 public final class CapabilityResolver {
     private final SemverHelpers semver = new SemverHelpers();
+    private final OfferDetailMatcher offerDetailMatcher = new OfferDetailMatcher();
 
     /**
      * Resolve a consumer need against candidate provider claims. The request carries the consumer
@@ -32,6 +34,7 @@ public final class CapabilityResolver {
                 .filter(candidate -> Objects.equals(candidate.offer.capability(), request.need()))
                 .filter(candidate -> semver.satisfies(candidate.offer.version(), range))
                 .filter(candidate -> accessPolicy(candidate.offer, request).allows(request.consumerClaimUri()))
+                .filter(candidate -> detailsMatch(candidate.offer, request.requiredOfferDetails()))
                 .toList();
         if (candidates.isEmpty()) {
             return ResolutionResult.unresolved(ErrorCode.NO_MATCHING_CONTRACT.name());
@@ -59,6 +62,15 @@ public final class CapabilityResolver {
      */
     private AccessPolicy accessPolicy(Offer offer, ResolutionRequest request) {
         return request.accessPoliciesByCapability().getOrDefault(offer.capability(), new AccessPolicy(offer.consumerAccess(), java.util.Set.of()));
+    }
+
+    /**
+     * Structural matcher: treats offer interface details as governed capability
+     * data. Required scalar values match by equality, collections by containment,
+     * and nested maps by recursive subset matching.
+     */
+    private boolean detailsMatch(Offer offer, Map<String, Object> requiredDetails) {
+        return offerDetailMatcher.matches(offer, requiredDetails);
     }
 
     /**

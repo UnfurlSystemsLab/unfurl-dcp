@@ -28,6 +28,21 @@ host product (flow)      →  CapabilityRegistrar, ContractInvocableFactory,
 | Running the present / accept / revoke lifecycle on a host | `com.unfurl.dcp.broker.CompositionBroker` |
 | Loading or rendering DCP documents (claims, contracts, questions) | `com.unfurl.dcp.description` |
 
+## Export artifact tiers
+
+DCP consumers should treat export files as three distinct tiers:
+
+| Tier | Purpose | Examples |
+|---|---|---|
+| Handoff | Small, governed artifacts that another product or deployment step consumes directly. | Root `CompositionContract`, frozen child contracts, signed contract envelopes, runtime bindings. |
+| Support | Required companion files that help package or hydrate the handoff without changing the contract model. | Claim bundles, runtime bundles, substrate profiles, trust-key references. |
+| Diagnostic | Debug or replay files that explain how an artifact was produced. They are comparable to compiler `.pdb` files: useful for support, not the production contract. | Compiler envelopes, decision audits, response snapshots, trace reports. |
+
+Default export surfaces should stay handoff-first. A product may emit richer diagnostic envelopes, but those files must not
+be the only way to understand or verify the DCP contract. Runtime aggregation should remain DCP-native: parent contracts
+reference child contracts, and runtime bindings reference child runtime bindings, instead of hiding closure state inside a
+product-specific sidecar.
+
 ## Install
 
 `unfurl-dcp` is a **single-jar** library (not multi-module). One coordinate, JDK 21:

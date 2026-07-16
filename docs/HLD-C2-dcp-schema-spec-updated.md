@@ -157,6 +157,27 @@ Rules:
 - `version` on an offer is REQUIRED because an offer is a capability contract subject to semver matching (settled #6). Consumers bind by `semver_range` against this.
 - `cost_implications` MUST be present when the offer consumes metered resources (e.g., a negotiation surface that consumes model tokens), per HLD-C §3.5 / observation #6.
 - A capability offer is the surface a Plane 2 contract binds against (a consumer *need* → a provider *offer*).
+- `interface.details` is part of the offer's deterministic structure, not free-form prose. A consumer need may require a subset of detail keys, and the resolver must accept only offers whose details satisfy that subset. Scalar values match by equality; list values match by containment; map values match recursively by subset.
+- Capabilities that support multiple execution modes declare them in details so mode selection is governed by DCP rather than hidden in local deployment metadata. Standard keys are `execution_modes`, `default_execution_mode`, and `mode_policies`.
+
+Example:
+
+```yaml
+offers:
+  - capability: agent.run
+    interface:
+      kind: in_process
+      details:
+        operation: start
+        input_shape: AgentInput
+        output_shape: AgentOutput
+        execution_modes: [simple, harness]
+        default_execution_mode: simple
+        mode_policies:
+          harness:
+            max_turns_default: 4
+            max_turns_max: 16
+```
 
 ### A.7 conflict_resolution (required) — where the protocol's value lives
 

@@ -153,7 +153,8 @@ questions
 
 resolver
   contains:
-    CapabilityResolver, ResolutionRequest, ResolutionResult, AccessPolicy
+    CapabilityResolver, ResolutionRequest, ResolutionResult, AccessPolicy,
+    required offer-detail subset matching for governed capability modes
   may depend on:
     claim, versioning
 
@@ -214,6 +215,7 @@ Implementation rules:
 - Use Jackson (`jackson-databind`, `jackson-dataformat-yaml`) with `snake_case` property naming strategy. Wire field names match HLD-C2 §H preferred names exactly (`ownership_position`, `accepted_providers`, `resolution_guidance`, `answer_grounding`, `requires_human_escalation`, `need`, `consumer_access`, `created_by`, `created_at`).
 - Use Jakarta Validation API (Hibernate Validator at test/runtime) for field- and class-level constraints.
 - Use a SemVer library (`semver4j` or equivalent) for version range matching.
+- Treat `OfferInterface.details` as deterministic capability structure. A consumer need may require a subset of details; the resolver matches scalar values by equality, list values by containment, and map values recursively by subset. Product-specific modes such as `agent.run` `execution_modes: [simple, harness]` are expressed through this generic DCP mechanism, not as product-specific core fields.
 - Keep service classes (validators, projectors, resolver, broker) stateless unless they are explicitly registry/store implementations.
 - Production modules must not depend on `testing/` fixtures.
 - The parent Maven POM owns dependency/plugin versions and publishes the artifact with a coordinated version.
@@ -612,8 +614,9 @@ Resolution is **strictly structural**:
 1. The capability exists in some candidate provider's claim.
 2. The offer's `version` satisfies the consumer's `semverRange`.
 3. The offer's `consumerAccess` (`ANY` or `NAMED_COMPONENTS_ONLY`) admits the consumer.
+4. The offer's `interface.details` satisfies any required detail subset on the consumer need.
 
-No model, no AI, no probabilistic matching. If multiple candidates satisfy, the resolver returns the highest SemVer match by default; ties (theoretically impossible after exact match) fail with a structured `MULTIPLE_MATCHES` reason.
+No model, no AI, no probabilistic matching. Required details are deterministic: scalar equality, list containment, and recursive map subset matching. If multiple candidates satisfy, the resolver returns the highest SemVer match by default; ties (theoretically impossible after exact match) fail with a structured `MULTIPLE_MATCHES` reason.
 
 ### Cross-Schema Validation (HLD-C2 §F)
 

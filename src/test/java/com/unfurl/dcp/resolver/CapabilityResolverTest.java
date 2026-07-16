@@ -56,6 +56,71 @@ class CapabilityResolverTest {
         assertThat(result.reason()).isEqualTo(ErrorCode.MULTIPLE_MATCHES.name());
     }
 
+    @Test
+    void matchesRequiredExecutionModeInOfferDetails() {
+        Claim provider = providerWithOffers(new Offer("agent.run", "run agent", ConsumerAccess.ANY,
+                new OfferInterface(InterfaceKind.IN_PROCESS, Map.of(
+                        "operation", "start",
+                        "execution_modes", List.of("simple", "harness"))),
+                Stability.STABLE, "1.0.0", true, "metered=true; unit=tokens"));
+
+        ResolutionResult result = new CapabilityResolver().resolve(new ResolutionRequest(
+                "agent.run",
+                null,
+                new SemverRange(">=1.0.0"),
+                URI.create("urn:consumer"),
+                Map.of(),
+                Map.of("execution_modes", List.of("harness")),
+                List.of(provider)));
+
+        assertThat(result.resolved()).isTrue();
+        assertThat(result.providerCapability()).isEqualTo("agent.run");
+    }
+
+    @Test
+    void refusesWhenRequiredExecutionModeIsMissing() {
+        Claim provider = providerWithOffers(new Offer("agent.run", "run agent", ConsumerAccess.ANY,
+                new OfferInterface(InterfaceKind.IN_PROCESS, Map.of(
+                        "operation", "start",
+                        "execution_modes", List.of("simple"))),
+                Stability.STABLE, "1.0.0", true, "metered=true; unit=tokens"));
+
+        ResolutionResult result = new CapabilityResolver().resolve(new ResolutionRequest(
+                "agent.run",
+                null,
+                new SemverRange(">=1.0.0"),
+                URI.create("urn:consumer"),
+                Map.of(),
+                Map.of("execution_modes", List.of("harness")),
+                List.of(provider)));
+
+        assertThat(result.resolved()).isFalse();
+        assertThat(result.reason()).isEqualTo(ErrorCode.NO_MATCHING_CONTRACT.name());
+    }
+
+    @Test
+    void matchesNestedOfferDetailSubset() {
+        Claim provider = providerWithOffers(new Offer("agent.run", "run agent", ConsumerAccess.ANY,
+                new OfferInterface(InterfaceKind.IN_PROCESS, Map.of(
+                        "mode_policies", Map.of(
+                                "harness", Map.of(
+                                        "max_turns_default", 4,
+                                        "max_turns_max", 16,
+                                        "resume", "in_memory")))),
+                Stability.STABLE, "1.0.0", true, "metered=true; unit=tokens"));
+
+        ResolutionResult result = new CapabilityResolver().resolve(new ResolutionRequest(
+                "agent.run",
+                null,
+                new SemverRange(">=1.0.0"),
+                URI.create("urn:consumer"),
+                Map.of(),
+                Map.of("mode_policies", Map.of("harness", Map.of("max_turns_max", 16))),
+                List.of(provider)));
+
+        assertThat(result.resolved()).isTrue();
+    }
+
     private Claim providerWithOffers(Offer... offers) {
         Claim base = Fixtures.validProviderClaim();
         return new Claim(base.identity(), base.domain(), base.refusals(), base.dependencies(), List.of(offers),

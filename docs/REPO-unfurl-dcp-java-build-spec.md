@@ -173,6 +173,7 @@ Required rule classes include:
 - Compatible need/capability pair resolves.
 - Incompatible versions are rejected.
 - Access-control restrictions (e.g., named-components-only) are enforced.
+- Required offer details resolve structurally and deterministically. Scalar details match by equality, list details by containment, and map details recursively by subset. Capability execution modes such as `agent.run` `execution_modes: [simple, harness]` must be selectable through this path.
 
 ### 6) Cross-Schema Validation
 - Manifest without claim fails.
