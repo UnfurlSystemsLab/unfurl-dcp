@@ -1,0 +1,56 @@
+identity:
+  uri: "unfurl://component/replace-provider"
+  name: "Replace Provider"
+  kind: "COMPONENT"
+  version: "0.1.0"
+  publisher: "replace-publisher"
+  publisher_uri: "https://example.invalid/publisher"
+domain:
+  summary: "Replace with the narrow capability boundary"
+  concerns:
+    - concern: "replace-concern"
+      description: "Replace with the owned concern this capability covers"
+      scope_notes: "Replace with where this concern begins and ends"
+      owns_state:
+        - resource: "replace-resource"
+          description: "Replace with provider-owned state"
+          sensitivity: "INTERNAL"
+      owns_decisions:
+        - decision: "replace-decision"
+          description: "Replace with provider-owned decision"
+          authority: "EXCLUSIVE"
+  boundary_principles:
+    - "Replace with a concrete boundary statement"
+refusals:
+  - concern: "replace-excluded-concern"
+    rationale: "Owned by the host or another component"
+    owned_by: "replace-owner-kind"
+dependencies:
+  required: []
+  recommended: []
+  forbidden: []
+offers:
+  - capability: "replace.action"
+    description: "Replace with the callable provider capability"
+    consumer_access: "ANY"
+    offer_interface:
+      interface_kind: "IN_PROCESS"
+      details:
+        surface: "contract.invocable"
+    stability: "EVOLVING"
+    version: "0.1.0"
+    metered: false
+    cost_implications: null
+conflict_resolution:
+  overlapping_concerns: []
+  precedence_rules: []
+  requires_human_escalation: false
+negotiation_surface: null
+integration_ports: null
+faults:
+  emitted: []
+metadata:
+  dcp_version: "0.2.0"
+  claim_version: "0.1.0"
+  created_at: "1970-01-01T00:00:00Z"
+  extensions: {}

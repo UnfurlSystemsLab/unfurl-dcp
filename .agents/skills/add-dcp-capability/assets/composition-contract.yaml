@@ -1,0 +1,39 @@
+contract_id: "dcp://contracts/replace-capability-0.1.0"
+contract_version: "1.0.0"
+parties:
+  consumer:
+    claim_uri: "unfurl://component/replace-consumer"
+    claim_version: "0.1.0"
+  provider:
+    claim_uri: "unfurl://component/replace-provider"
+    claim_version: "0.1.0"
+binding:
+  consumer_need: "replace-need"
+  provider_capability: "replace.action"
+  provider_capability_version: "0.1.0"
+data_mapping:
+  inbound: {}
+  outbound: {}
+transport:
+  kind: "IN_PROCESS"
+  details:
+    surface: "contract.invocable"
+expectations:
+  timeout_ms: 30000
+  idempotent: false
+  async: false
+  correlation_id_required: true
+provenance:
+  created_by: "FABRIC"
+  negotiation_mode: "H2H"
+  model_id: null
+  fabric_version: "replace-fabric-version"
+  human_in_loop: true
+  created_at: "1970-01-01T00:00:00Z"
+trust:
+  tier: "NEUTRAL"
+invalidation:
+  triggers: []
+  on_runtime_violation: "HARD_FAIL"
+metadata:
+  extensions: {}

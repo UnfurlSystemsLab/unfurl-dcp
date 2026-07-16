@@ -1,0 +1,17 @@
+apiVersion: "unfurl.io/catalog/v1"
+kind: "DcpCapability"
+metadata:
+  name: "replace-capability"
+  version: "0.1.0"
+spec:
+  claim: "replace/path/to/claim.yaml"
+  compositionContract: "replace/path/to/composition-contract.yaml"
+  runtimeBinding: "replace/path/to/runtime-binding.yaml"
+  capability: "replace.action"
+  implementation:
+    surface: "contract.invocable"
+    factoryClass: "replace.with.ContractInvocableFactory"
+    invocableClass: "replace.with.ContractInvocable"
+  packaging:
+    artifact: "replace-artifact-coordinates-or-path"
+    catalogEnvelope: "META-INF/unfurl-catalog.yaml"

@@ -1,0 +1,12 @@
+interface:
+  display_name: Add DCP Capability
+  short_description: Add compliant DCP adapters to third-party apps
+  default_prompt: Use $add-dcp-capability to expose this application through a standards-compliant
+    DCP capability.
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

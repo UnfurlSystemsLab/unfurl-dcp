@@ -1,0 +1,32 @@
+binding_id: "dcp://bindings/replace-capability-dev"
+contract_id: "dcp://contracts/replace-capability-0.1.0"
+contract_version: "1.0.0"
+target_environment:
+  name: "dev"
+provider_instance:
+  component_uri: "unfurl://component/replace-provider"
+  component_version: "0.1.0"
+  instance_name: "replace-provider-dev"
+  deployment_kind: "IN_PROCESS"
+  base_url: null
+  base_url_ref:
+    uri: "config://replace-provider/base-url"
+  credentials_ref:
+    uri: "secret://replace-provider/credentials"
+consumer_instance:
+  component_uri: "unfurl://component/replace-consumer"
+  component_version: "0.1.0"
+  instance_name: "replace-consumer-dev"
+runtime_policy:
+  enabled: true
+  timeout_ms: 30000
+  telemetry_namespace: "replace-capability"
+  audit_enabled: true
+configuration:
+  values: {}
+deployment_controls:
+  values: {}
+lifecycle:
+  enabled: true
+metadata:
+  extensions: {}
