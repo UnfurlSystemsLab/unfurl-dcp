@@ -67,7 +67,8 @@ Produce a short integration plan containing:
 6. vendor adapter and transport choice
 7. host adapter, if required
 8. declared faults and allowed remediation
-9. generated files and test plan
+9. public documentation surface, schema source, and capability visibility policy
+10. generated files and test plan
 
 Flag assumptions. Do not broaden ownership merely because the wrapped product can technically perform adjacent operations.
 
@@ -84,12 +85,18 @@ Create or update:
 - adapter implementation exposing `ContractInvocable`
 - `ContractInvocableFactory` when runtime materialization is required
 - explicit host adapter when translating to a native execution surface
+- generated API documentation metadata when the host exposes OpenAPI, Swagger UI, AsyncAPI, MCP tool docs,
+  or equivalent runtime-facing documentation
 
 Treat YAML/JSON DCP artifacts and Java interfaces as authoritative. Annotations may mirror them for discovery but must not replace them.
 
 Never inline credentials. Never let runtime bindings change frozen ownership, dependency satisfaction, conflict decisions, trust, or invalidation rules.
 
 For aggregate integrations, use DCP containment metadata (`contains`, `children`, `containsClaimUris`, or `childClaimUris`) instead of private closure fields.
+
+Capability documentation must be projected from accepted composition contracts, runtime bindings, host-registered
+capabilities, and explicit request/response schemas. Do not publish raw classpath, plugin jar, tool registry,
+provider registry, model catalog, or RAG/vector-store contents as callable capability documentation.
 
 ### Phase 5: Implement Provider, Client, And Host Adapters
 
@@ -152,6 +159,7 @@ Run repository-native build, formatting, static analysis, and tests. Add focused
 - fault declaration, emission, propagation, and allowed remediation
 - correlation and trace propagation
 - architecture boundaries preventing host or vendor dependencies from entering DCP-facing core
+- generated documentation exposes only accepted/runtime-bound capabilities with explicit schemas
 
 Use [references/verification-checklist.md](references/verification-checklist.md) as the completion gate. Report commands run, results, assumptions, and remaining external setup.
 

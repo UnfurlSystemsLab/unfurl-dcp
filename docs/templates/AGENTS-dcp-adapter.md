@@ -253,6 +253,7 @@ Every DCP adapter/substrate component must test:
 - fault declarations and runtime fault signal behavior
 - forbidden import boundaries
 - no model/cloud/database/auth/telemetry SDKs in protocol/core modules
+- generated OpenAPI/Swagger or equivalent API docs expose only accepted/runtime-bound capabilities with explicit schemas
 
 For Flow adapters, additionally test:
 
@@ -272,5 +273,26 @@ Each adapter repo must document:
 - what host adapters are provided
 - which deployment shapes and binding modes are supported
 - how to build, test, and package the catalog artifact
+- how capability documentation is projected, including which capabilities are public, which schemas are used,
+  and which accepted/runtime-bound capabilities are intentionally not exposed
 
 The docs must point back to this template as the inherited source of truth.
+
+## 11. Governed Capability Documentation
+
+When an adapter or host generates OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, or any equivalent
+runtime-facing documentation, it must project from the governed DCP surface:
+
+- accepted composition contracts and runtime bindings
+- capabilities actually registered into the host runtime
+- explicit request/response schemas and declared faults
+- an explicit documentation visibility policy
+
+Do not generate public documentation by scanning the substrate classpath, plugin jars, vendor registries,
+tool registries, provider lists, model catalogs, RAG/vector stores, or raw component registries. Those sources
+can inform design-time authoring, but they are not proof that a capability is accepted, bound, executable, or
+safe to publish.
+
+If a capability is accepted and intended to be public but has no explicit schema, stop and record a
+documentation gap. Do not infer schemas from prompts, logs, model outputs, retrieved chunks, sample payloads,
+or implementation-specific DTOs that were not approved as the DCP contract surface.

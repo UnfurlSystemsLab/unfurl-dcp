@@ -12,6 +12,13 @@ spec:
     surface: "contract.invocable"
     factoryClass: "replace.with.ContractInvocableFactory"
     invocableClass: "replace.with.ContractInvocable"
+  documentation:
+    visibility: "internal-or-public"
+    capabilitySource: "accepted-contract-runtime-binding"
+    openApiPath: "replace/path/to/openapi.yaml"
+    requestSchema: "replace.schema.Request"
+    responseSchema: "replace.schema.Response"
+    faultsSchema: "replace/path/to/faults.yaml"
   packaging:
     artifact: "replace-artifact-coordinates-or-path"
     catalogEnvelope: "META-INF/unfurl-catalog.yaml"

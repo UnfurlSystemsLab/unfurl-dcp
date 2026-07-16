@@ -59,6 +59,16 @@ Runtime adapters may emit declared signals. They must not renegotiate contracts 
 - Link to the exact contract id/version and pinned provider/consumer component versions.
 - Use DCP containment metadata for aggregate runtime bindings; do not invent product-specific runtime closure fields.
 
+## Governed documentation
+
+- Generate OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, or equivalent runtime-facing docs from accepted
+  contracts, runtime bindings, host-registered capabilities, and explicit schemas.
+- Do not treat classpath discovery, plugin jars, vendor registries, tool registries, provider catalogs, model catalogs,
+  RAG/vector stores, or raw component registries as public API documentation sources.
+- A public capability needs an explicit request schema, response schema, declared fault surface, and visibility policy.
+- If a capability is accepted and intended to be public but no schema exists, record a documentation gap and stop rather
+  than inferring the public contract from logs, prompts, model output, retrieved chunks, or implementation DTOs.
+
 ## Runtime broker
 
 `present(claim, providerCapability, context)` validates the claim, locates the matching frozen contract for the requested capability, and verifies its signature. Use `present(claim, context)` only when the claim has exactly one offer. `accept` re-fetches and re-verifies the contract, materializes the invocable, and registers the exact binding. `revoke` and `invalidate` remove the registered capability without renegotiation.
