@@ -10,6 +10,39 @@ The source of truth for this template lives in:
 unfurl-dcp/docs/templates/AGENTS-dcp-adapter.md
 ```
 
+## Codex Skill
+
+When Codex is being used to create, review, or repair a DCP adapter or substrate component, invoke:
+
+```text
+@add-dcp-capability
+```
+
+The skill carries the step-by-step runbook, current DCP artifact templates, and verification
+checklist. This template remains the repository-level rule set that should be copied into adapter
+repos; the skill is the preferred Codex workflow for applying these rules.
+
+To make the skill available from an adapter repository, copy both this template and the skill folder
+into the adapter repo root:
+
+```powershell
+$adapterRepo = "C:\path\to\adapter-repo"
+$unfurlRoot = "C:\path\to\unfurl"
+New-Item -ItemType Directory -Force "$adapterRepo\.agents\skills" | Out-Null
+Copy-Item -Recurse -Force "$unfurlRoot\unfurl-dcp\.agents\skills\add-dcp-capability" "$adapterRepo\.agents\skills\"
+Copy-Item -Force "$unfurlRoot\unfurl-dcp\docs\templates\AGENTS-dcp-adapter.md" "$adapterRepo\AGENTS.md"
+```
+
+```bash
+adapter_repo=/path/to/adapter-repo
+unfurl_root=/path/to/unfurl
+mkdir -p "$adapter_repo/.agents/skills"
+cp -R "$unfurl_root/unfurl-dcp/.agents/skills/add-dcp-capability" "$adapter_repo/.agents/skills/"
+cp "$unfurl_root/unfurl-dcp/docs/templates/AGENTS-dcp-adapter.md" "$adapter_repo/AGENTS.md"
+```
+
+After copying, start a fresh Codex session in the adapter repo and invoke `@add-dcp-capability`.
+
 ## 1. DCP Is The Contract Boundary
 
 Every adapter or substrate component must describe its integration through DCP constructs before
@@ -241,4 +274,3 @@ Each adapter repo must document:
 - how to build, test, and package the catalog artifact
 
 The docs must point back to this template as the inherited source of truth.
-
