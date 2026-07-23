@@ -16,6 +16,7 @@
   - composition contract
   - runtime binding
   - webapp manifest
+  - capability documentation projection
   - negotiation question schema
 - Per-schema validators plus cross-schema validation rules.
 - A single shared component-description model that projects into both claim and manifest.
@@ -36,9 +37,10 @@ src/main/java/com/unfurl/dcp/
   claim/            // claim schema models + validator
   fault/            // fault declarations, runtime fault signals, deterministic propagation gate
   manifest/         // webapp manifest models + validator
+  documentation/    // capability documentation projection models + validator
   contract/         // composition contract, freeze/load, provenance, trust, verification
   runtimebinding/   // runtime binding schema + validator
-  questions/        // question schema + renderers + captured-answer model
+  questions/        // question schema + action context + renderers + captured-answer model
   resolver/         // need->capability structural matching
   validation/       // cross-schema validation
   versioning/       // semver compatibility helpers
@@ -99,6 +101,9 @@ Do not use Python-era dependencies (`pydantic`, `pyyaml`, `packaging`) in produc
 - Maintain one canonical `ComponentDescription` model as the source for:
   - `toClaim(ComponentDescription)`
   - `toManifest(ComponentDescription)`
+- Model `ActionContext` as a design-time input in `questions/`, not as a runtime artifact.
+- Model capability documentation projection in `documentation/`; validate it from accepted contracts, active runtime
+  bindings, host-registered capabilities, explicit schemas, and declared faults.
 
 This ensures claim/manifest drift is structurally prevented.
 
@@ -117,6 +122,8 @@ Required rule classes include:
 - Manifest invariants (claim identity/version parity, permission derivability, theme mode constraints).
 - Contract invariants (party count/version pinning, provenance consistency, trust derivation consistency, runtime violation hard-fail policy).
 - Runtime binding invariants (contract linkage/version parity, no inline secrets, runtime-policy firewall).
+- Capability documentation invariants (accepted contract source, active runtime binding source, registered capability
+  source, explicit request/response schemas, declared fault references, visibility policy).
 - Cross-schema references (manifest->claim, contract capability->claim capability/version).
 
 ---
@@ -183,6 +190,16 @@ Required rule classes include:
 ### 7) Questions
 - Canonical question set renders to both human interview and model prompt from one definition.
 - Captured answers feed contract building and serialize to training tuple shape.
+- Action-scoped authoring context selects targeted add/remove/replace/connect/disconnect/runtime-configuration
+  questions and is not serialized into Plane 3 runtime invocation or frozen contract semantics.
+
+### 7B) Capability Documentation Projection
+- Generated OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, or equivalent runtime-facing docs are projected
+  from accepted composition contracts, active runtime bindings, host-registered capabilities, explicit schemas, and
+  declared faults.
+- Classpath scans, plugin jars, tool registries, provider registries, model catalogs, RAG/vector stores, prompts,
+  logs, model outputs, and implementation DTOs are rejected as documentation proof.
+- Missing explicit request/response schemas fail with a documentation gap instead of inferred public schemas.
 
 ### 8) Runtime Composition Broker
 - `present(claim, context)` validates the claim, performs frozen-contract lookup, verifies the offline signature, and returns `ACCEPT(MATCH_FOUND)` or structured refusal reasons without model calls or network access.
@@ -198,7 +215,7 @@ Required rule classes include:
 - `BrokerEventSink` defaults to `NoopBrokerEventSink`, which performs no I/O.
 
 ### 10) Architecture And Enterprise Guardrails
-- ArchUnit enforces package boundaries for the single-artifact layout: design-time packages do not depend on broker/SPI, `trust` remains a leaf, production code does not depend on test fixtures, and the broker does not import question/manifest/description packages.
+- ArchUnit enforces package boundaries for the single-artifact layout: design-time packages do not depend on broker/SPI, `trust` remains a leaf, production code does not depend on test fixtures, and the broker does not import question/manifest/documentation/description packages.
 - No host product packages, web frameworks, HTTP clients, DB clients, cloud SDKs, auth SDKs, AI SDKs, or observability SDKs are production dependencies.
 - Offline verification uses caller-supplied key sets only; no remote key fetches or callbacks are permitted.
 - Property tests cover claim-validator determinism, resolver stability under candidate shuffling, renderer identity, freeze/load byte stability, and SemVer helper behavior.

@@ -16,6 +16,8 @@ This document defines the DCP schemas, specified together because they are proje
 - **C. Runtime binding schema** (deployment/environment projection) — the mutable environment-specific wiring.
 - **D. Webapp manifest schema** (frontend projection of the claim).
 - **E. Negotiation question schema** (Plane 2 structure; H2C interview = C2C prompt).
+- **F. Design-time action context schema** (Plane 2 input) -- selected authoring/edit intent used to ask targeted questions.
+- **G. Capability documentation projection** (runtime-facing docs) -- Swagger/OpenAPI/AsyncAPI/MCP docs from accepted DCP surfaces only.
 
 Notation: types are given as `string`, `int`, `bool`, `enum[...]`, `list<T>`, `map<K,V>`, `uri`, `semver`, `semver_range`, `timestamp`, `secret_ref`, and `config_ref`. `?` marks optional. All schemas are expressed in YAML; JSON is equivalent.
 
@@ -621,7 +623,112 @@ answers to it. The schema is the bridge between the protocol and the experiment.
 
 ---
 
-## F. Validation Rules Summary
+## F. Design-Time Action Context Schema
+
+`action_context` is an optional Plane 2 input used by authoring tools, Studio surfaces, and agents when the operator
+is acting on a selected component, substrate, connection, or runtime configuration. It is not a claim, composition
+contract, runtime binding, or runtime invocation payload. It helps the authoring layer ask the right DCP questions
+before producing or changing contracts and bindings.
+
+```yaml
+action_context:
+  operation: enum[add_component, remove_component, replace_component, connect, disconnect, configure_runtime]
+
+  target:
+    catalog_entry_id: uri?
+    component_id: string?
+    component_label: string?
+    replacement_catalog_entry_id: uri?
+
+  capabilities:
+    offers: list<string>?
+    needs: list<string>?
+    substrate_needs: list<string>?
+
+  connection:
+    from_port: string?
+    to_port: string?
+    protocol: string?
+
+  session:
+    tenant: string?
+    assembly_id: string?
+    draft_session_id: string?
+    correlation_id: string?
+
+  constraints:
+    target_environment: string?
+    policy_refs: list<string>?
+    notes: string?
+```
+
+Rules:
+- `action_context` is design-time only. It MUST NOT appear in Plane 3 invocation, hot-path runtime payloads, or frozen
+  contract semantics.
+- `action_context` may be attached to a Fabric/Foundry authoring request, a human interview request, or any equivalent
+  design-time composition assistant.
+- The response to `action_context` is still governed by the negotiation question schema. The authoring layer asks
+  clarification questions, records answers, and then proposes normal DCP artifacts or Studio intents.
+- Answers that affect endpoints, credentials, provider choices, runtime target, telemetry, audit, or secret/config
+  values flow into runtime bindings as references. They do not become private UI state.
+- Add/replace/connect/configure flows SHOULD ask for provider/config/secret/runtime binding details before proposing
+  a contract or binding change.
+- Remove/disconnect flows SHOULD ask about dependent contracts, child bindings, replacement-before-removal, state
+  cleanup, and revocation impact before proposing deletion.
+- Product UIs may use friendlier operation labels, but protocol payloads SHOULD use the enum values above.
+
+---
+
+## G. Capability Documentation Projection
+
+Runtime-facing documentation such as OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, or generated SDK metadata
+is a projection of accepted and bound DCP capabilities. It is not produced by scanning implementation code alone.
+
+```yaml
+capability_documentation:
+  document_id: uri
+  target_environment:
+    environment: string
+    tenant: string?
+    namespace: string?
+
+  source:
+    contracts: list<uri>
+    runtime_bindings: list<uri>
+    registered_capabilities: list<string>
+
+  surfaces:
+    - kind: enum[openapi, swagger_ui, asyncapi, mcp_tools, sdk_metadata]
+      visibility: enum[public, internal, private]
+      base_url_ref: config_ref?
+      includes: list<string>
+
+  schemas:
+    - capability: string
+      request_schema_ref: uri
+      response_schema_ref: uri
+      faults: list<string>
+
+  lifecycle:
+    generated_by: string
+    generated_at: timestamp
+```
+
+Rules:
+- Documentation generators MUST include only capabilities that are accepted by frozen composition contracts, active in
+  runtime bindings, and registered in the host runtime.
+- Every public or internal capability documentation entry MUST have explicit request and response schema references.
+- Declared DCP faults that can cross the documented boundary SHOULD be included in the generated documentation.
+- Plugin jars, classpath discovery, tool registries, provider registries, model catalogs, RAG/vector stores, prompts,
+  logs, model outputs, and implementation DTOs are not sufficient proof that a capability is callable or safe to expose.
+- If a capability is accepted and intended to be documented but lacks an explicit schema, generation MUST fail with a
+  documentation gap rather than infer a public contract.
+- Documentation visibility is policy-controlled. DCP records the projection inputs; product policy decides which
+  accepted capabilities are public, internal, or private.
+
+---
+
+## H. Validation Rules Summary
 
 `unfurl-dcp` MUST enforce, at minimum:
 
@@ -656,10 +763,14 @@ Manifest:
 Cross-schema:
 - A manifest's component MUST have a corresponding claim.
 - An offer referenced by a contract `binding.provider_capability` MUST exist in the provider's claim at a version satisfying the constraint.
+- A documentation projection may expose only capabilities backed by accepted contracts, active runtime bindings, and
+  host-registered capabilities, and every exposed capability must have explicit request/response schema refs.
+- `action_context`, when present, must stay on the design-time path and must not be serialized into runtime invocation
+  payloads or used as a substitute for contract/runtime-binding fields.
 
 ---
 
-## G. What is deferred
+## I. What is deferred
 
 - **Federated flywheel mechanics** (consent, scrubbing, local-vs-general model contribution) — deferred per settled #4; needs product/legal input, does not block this schema.
 - **Trust policy** — the protocol records `trust.tier`; the *rules* for what a deployment does with `self`-tier contracts are policy, specified outside DCP.
@@ -669,7 +780,7 @@ Cross-schema:
 
 ---
 
-## H. Field Name Review for End-User Understanding
+## J. Field Name Review for End-User Understanding
 
 The current names are mostly good for protocol implementers, but a few were adjusted for consistency and operator readability. The following names are now preferred:
 
@@ -698,7 +809,7 @@ Compatibility rule:
 
 ---
 
-## I. What comes next
+## K. What comes next
 
 - **`unfurl-dcp` repo build spec** — the Claude-Code-ready phased build plan: schema models, validators, the resolver integration, the question-schema renderer (human + model), forbidden imports, acceptance criteria. Built against these schemas.
 - The claim, runtime binding, and manifest schemas here are specified together (HLD-C §4); the repo build spec MUST generate both from one shared component-description definition, never independently.

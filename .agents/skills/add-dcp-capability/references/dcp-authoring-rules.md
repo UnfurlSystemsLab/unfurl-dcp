@@ -15,6 +15,8 @@ Every third-party adapter should provide:
 5. Catalog metadata, normally `META-INF/unfurl-catalog.yaml` or the target repository's equivalent catalog envelope.
 6. A neutral `ContractInvocable` implementation and, when needed, a `ContractInvocableFactory`.
 7. A host/client adapter only when a native runtime surface must invoke the accepted DCP capability.
+8. Action-scoped authoring metadata for add/remove/replace/connect/disconnect/configure-runtime flows when the adapter
+   requires operator choices.
 
 ## Claims
 
@@ -58,6 +60,22 @@ Runtime adapters may emit declared signals. They must not renegotiate contracts 
 - Do not change ownership, dependency satisfaction, conflict resolution, trust tier, or invalidation rules frozen into the contract.
 - Link to the exact contract id/version and pinned provider/consumer component versions.
 - Use DCP containment metadata for aggregate runtime bindings; do not invent product-specific runtime closure fields.
+
+## Action-scoped authoring
+
+Use DCP `action_context` only on the design-time authoring path. It may identify the selected operation, component,
+catalog entry, replacement, ports, capabilities, needs, substrate needs, session, correlation id, policy refs, and
+target environment.
+
+Adapters should expose enough metadata for the authoring agent to ask:
+
+- add/replace/connect/configure: provider, endpoint, config, secret reference, runtime target, telemetry, audit, policy,
+  and binding questions
+- remove/disconnect: dependent contract, child binding, replacement-before-removal, state cleanup, fault, and revocation
+  impact questions
+
+Captured answers must feed normal DCP artifacts or explicit product intents. Do not keep required answers only in UI
+state, prompts, logs, implementation DTOs, or private sidecars. Do not serialize `action_context` into runtime invocation.
 
 ## Governed documentation
 

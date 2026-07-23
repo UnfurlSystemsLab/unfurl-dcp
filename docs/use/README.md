@@ -27,6 +27,8 @@ host product (flow)      →  CapabilityRegistrar, ContractInvocableFactory,
 | Verifying signed contracts offline | `com.unfurl.dcp.trust.OfflineContractVerifier` |
 | Running the present / accept / revoke lifecycle on a host | `com.unfurl.dcp.broker.CompositionBroker` |
 | Loading or rendering DCP documents (claims, contracts, questions) | `com.unfurl.dcp.description` |
+| Asking action-scoped authoring questions | `com.unfurl.dcp.questions.ActionContext` + question renderers |
+| Projecting Swagger/OpenAPI/AsyncAPI/MCP docs | `com.unfurl.dcp.documentation` |
 
 ## Export artifact tiers
 
@@ -304,6 +306,20 @@ For programmatic generation of negotiation question views see `com.unfurl.dcp.qu
 
 ---
 
+## 8. Action-context and capability docs
+
+`ActionContext` is a design-time input for authoring tools. It lets a Studio or agent surface say "the user is adding,
+removing, replacing, connecting, disconnecting, or configuring this selected component" so the same DCP question
+renderers can ask targeted configuration and impact questions. Captured answers feed normal contracts, runtime bindings,
+or explicit product intents. They are not runtime invocation payloads.
+
+Generated runtime-facing docs are a DCP projection too. OpenAPI, Swagger UI, AsyncAPI, MCP tool docs, and SDK metadata
+should come from accepted contracts, active runtime bindings, registered capabilities, explicit request/response schemas,
+and declared faults. Do not publish docs from classpath scans, plugin jars, raw tool registries, prompts, logs, model
+outputs, or DTOs alone.
+
+---
+
 ## Surface map
 
 | Package | Purpose | Key types |
@@ -316,7 +332,8 @@ For programmatic generation of negotiation question views see `com.unfurl.dcp.qu
 | `com.unfurl.dcp.validation` | Schema validation reports | `SchemaValidationReport`, `ErrorCode` |
 | `com.unfurl.dcp.manifest` | Component / runtime manifests | `ComponentManifest`, `RuntimeManifest` |
 | `com.unfurl.dcp.description` | DCP doc codecs | `DescriptionCodec` |
-| `com.unfurl.dcp.questions` | Negotiation question views | `QuestionSet`, `InterviewRenderer`, `PromptRenderer` |
+| `com.unfurl.dcp.questions` | Negotiation question and action-context views | `QuestionSet`, `ActionContext`, `InterviewRenderer`, `PromptRenderer` |
+| `com.unfurl.dcp.documentation` | Governed capability documentation projection | `CapabilityDocumentation`, `DocumentationSurface`, `CapabilityDocumentationValidator` |
 | `com.unfurl.dcp.runtimebinding` | Runtime binding shapes | `RuntimeBinding`, `BindingResolver` |
 | `com.unfurl.dcp.resolver` | DCP-level reference resolution | `DcpReferenceResolver` |
 | `com.unfurl.dcp.versioning` | Semver helpers | `VersionRange`, `VersionMatcher` |

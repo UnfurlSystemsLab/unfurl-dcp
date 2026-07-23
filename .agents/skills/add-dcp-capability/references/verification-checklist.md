@@ -18,6 +18,7 @@
 - [ ] Runtime binding references the correct contract and party versions.
 - [ ] Secrets use references only.
 - [ ] Aggregate children use DCP containment metadata.
+- [ ] Action-scoped authoring metadata maps required operator answers to DCP artifacts or explicit product intents.
 - [ ] Public documentation metadata identifies schemas, visibility, and capability source.
 
 ## Implementation
@@ -28,6 +29,7 @@
 - [ ] Registration occurs through `CapabilityRegistrar`.
 - [ ] Contract, capability, component, correlation, and trace metadata survive translation.
 - [ ] Errors map to structured results or declared faults.
+- [ ] Action-context clarification does not mutate runtime state directly and is not serialized into invocation payloads.
 - [ ] Generated docs project from accepted/runtime-bound capabilities, not classpath or registry scans.
 
 ## Lifecycle and trust
@@ -47,6 +49,7 @@
 - [ ] Cross-schema validation covers claim, contract, and runtime binding.
 - [ ] No inline credential values are accepted.
 - [ ] Declared faults and propagation policy are tested.
+- [ ] Add/remove/replace/connect/disconnect/configure-runtime authoring flows ask the expected DCP-backed questions.
 - [ ] OpenAPI/Swagger/AsyncAPI/MCP docs expose only public capabilities with explicit schemas.
 - [ ] Architecture tests reject vendor/host imports in DCP-facing core.
 - [ ] Audit events avoid full sensitive payloads and propagate correlation id.

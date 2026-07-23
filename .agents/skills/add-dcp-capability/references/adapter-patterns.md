@@ -60,6 +60,20 @@ host registry -> accepted ContractInvocable -> native runtime call
 Do not let the client call provider HTTP endpoints, SDKs, or product internals directly when a DCP contract binding exists.
 Runtime endpoint and credential choices come from runtime binding, not claim or contract.
 
+## Authoring-assist wiring
+
+Use this pattern when a UI, agent, or authoring host helps a user modify an assembly:
+
+```text
+selected UI action -> action_context -> DCP question rendering
+captured answers -> proposed DCP artifacts or product intents
+accepted proposal -> normal contract/runtime-binding/broker lifecycle
+```
+
+The authoring adapter may read claims, offers, schemas, faults, catalog metadata, current contracts, and current runtime
+bindings. It must not treat the selected action as a runtime command, and it must not store required configuration only
+in prompt/session state.
+
 ## Module layout
 
 A typical integration may use:

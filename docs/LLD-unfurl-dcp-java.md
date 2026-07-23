@@ -50,7 +50,10 @@ The design preserves the enterprise posture inherited from `unfurl-substrate` an
 - A single shared `ComponentDescription` that projects to both `Claim` and `WebappManifest` so the two never drift.
 - Layered validators: field-level (Jakarta), object-level (custom), cross-schema (services).
 - A structural resolver for `need → capability` binding using SemVer range matching.
-- Question schema rendering into two neutral shapes: human-interview view and model-prompt view, from one canonical definition.
+- Question schema rendering into two neutral shapes: human-interview view and model-prompt view, from one canonical definition,
+  plus a design-time `ActionContext` input model for action-scoped clarification.
+- Capability documentation projection models that validate OpenAPI/Swagger/AsyncAPI/MCP documentation inputs against
+  accepted contracts, active runtime bindings, registered capabilities, explicit schemas, and declared faults.
 - Contract freeze/load with provenance and trust handling; offline signature verification of frozen contracts.
 - A **runtime composition broker** that, given a presented claim, deterministically looks up the matching frozen contract, returns a disposition, and on accept registers the guest's offers into a host's `CapabilityRegistry` as `ContractInvocable`-backed executors.
 - No-op/default implementations that perform no I/O and never phone home.
@@ -73,9 +76,10 @@ src/main/java/com/unfurl/dcp/
   claim/            // Claim schema records + ClaimValidator
   fault/            // fault declarations, runtime fault signals, deterministic propagation gate
   manifest/         // WebappManifest schema records + WebappManifestValidator
+  documentation/    // capability documentation projection records + validator
   contract/         // CompositionContract records, freezing, loading, provenance, trust, signature verification
   runtimebinding/   // RuntimeBinding records + RuntimeBindingValidator (no-inline-secrets, policy firewall)
-  questions/        // NegotiationQuestion(Schema) + InterviewRenderer + ModelPromptRenderer + CapturedAnswer
+  questions/        // NegotiationQuestion(Schema) + ActionContext + renderers + CapturedAnswer
   resolver/         // CapabilityResolver: need -> capability structural matching with SemVer
   validation/       // CrossSchemaValidator: claim<->manifest, contract<->claim, binding<->contract checks
   versioning/       // SemverRange helpers, claim/offer/contract version axes
@@ -126,6 +130,13 @@ manifest
   may depend on:
     description, claim (for cross-projection invariants), versioning, Jakarta Validation API
 
+documentation
+  contains:
+    CapabilityDocumentation, DocumentationSurface, DocumentationSource,
+    DocumentationSchemaRef, CapabilityDocumentationValidator
+  may depend on:
+    contract, runtimebinding, claim, validation, Jakarta Validation API
+
 contract
   contains:
     CompositionContract record + nested records mirroring HLD-C2 §B,
@@ -145,6 +156,7 @@ runtimebinding
 questions
   contains:
     NegotiationQuestion, NegotiationQuestionSchema, AnswerType, FeedsTarget,
+    ActionContext, ActionOperation, ActionTarget, ActionCapabilities, ActionConnection,
     InterviewRenderer (renders to a neutral InterviewView shape),
     ModelPromptRenderer (renders to a neutral PromptView shape),
     CapturedAnswer, AnswerCorpus
@@ -201,9 +213,12 @@ spi
 Dependency direction is acyclic. Critical rules:
 
 - `trust/` is a **leaf**: it owns `TrustTier`, `TrustCreatedBy`, `TrustTierDeriver`, and `SignedContract` envelopes (canonical bytes + signature). It does NOT import `contract.CompositionContract` or `contract.Provenance`. `contract/` adapts `Provenance.createdBy` into the trust-owned `TrustCreatedBy` input and calls `TrustTierDeriver.derive(createdBy)` to populate `Trust.tier` — the derivation has exactly one home.
-- `description/`, `claim/`, `manifest/`, `runtimebinding/`, `questions/`, `resolver/`, `versioning/`, `validation/` must not depend on `broker/` or `spi/`.
+- `description/`, `claim/`, `manifest/`, `documentation/`, `runtimebinding/`, `questions/`, `resolver/`, `versioning/`, `validation/` must not depend on `broker/` or `spi/`.
+- `documentation/` may validate references to contracts and runtime bindings, but it must not inspect host registries
+  directly or scan implementation classes. Hosts pass registered capability names as projection input.
 - `fault/` is a schema/runtime-decision package. It may read claims to evaluate declared fault policy, but it must not depend on broker/SPI or any concrete monitoring adapter.
-- `broker/` must not depend on `questions/`, `manifest/`, or `description/`. Interview rendering and manifest projection are design-time-only; the runtime broker is invocation-only.
+- `broker/` must not depend on `questions/`, `manifest/`, `documentation/`, or `description/`. Interview rendering,
+  manifest projection, and documentation projection are outside the runtime broker; the broker is invocation-only.
 - `broker/` must not import `substrate-ports.CapabilityRegistry` directly. It registers/revokes through `spi.CapabilityRegistrar`, which the host implements over its mutable capability manager/registry implementation. This keeps the substrate `CapabilityRegistry` interface read-only and lets DCP own the mutability contract.
 - `unfurl-dcp` may depend on `unfurl-substrate` (substrate-composition-api, substrate-ports). It must not depend on `unfurl-flow`, `unfurl-foundry`, `unfurl-foundry-substrate`, or `unfurl-fabric`.
 - **Single artifact, package-level enforcement.** Because `unfurl-dcp` ships as one Maven artifact (per the Java build spec), the rules above are not enforced by module boundaries but by ArchUnit assertions on package boundaries. See §"Testing And Architecture Enforcement".
@@ -212,7 +227,7 @@ Implementation rules:
 
 - Prefer Java records for immutable data. Use immutable classes with builders only when Jackson/Jakarta Validation ergonomics require them.
 - Use defensive copies for collections and map-like payloads.
-- Use Jackson (`jackson-databind`, `jackson-dataformat-yaml`) with `snake_case` property naming strategy. Wire field names match HLD-C2 §H preferred names exactly (`ownership_position`, `accepted_providers`, `resolution_guidance`, `answer_grounding`, `requires_human_escalation`, `need`, `consumer_access`, `created_by`, `created_at`).
+- Use Jackson (`jackson-databind`, `jackson-dataformat-yaml`) with `snake_case` property naming strategy. Wire field names match HLD-C2 §J preferred names exactly (`ownership_position`, `accepted_providers`, `resolution_guidance`, `answer_grounding`, `requires_human_escalation`, `need`, `consumer_access`, `created_by`, `created_at`).
 - Use Jakarta Validation API (Hibernate Validator at test/runtime) for field- and class-level constraints.
 - Use a SemVer library (`semver4j` or equivalent) for version range matching.
 - Treat `OfferInterface.details` as deterministic capability structure. A consumer need may require a subset of details; the resolver matches scalar values by equality, list values by containment, and map values recursively by subset. Product-specific modes such as `agent.run` `execution_modes: [simple, harness]` are expressed through this generic DCP mechanism, not as product-specific core fields.
@@ -334,7 +349,7 @@ public record NegotiationSurface(
 backward-compatible constructor that omits it; all claim producers must pass either a declared `FaultPolicy`
 or `FaultPolicy.empty()` explicitly so missing fault vocabulary is caught during integration.
 
-`ClaimValidator` is a Jakarta-based service that enforces HLD-C2 §F's claim rules:
+`ClaimValidator` is a Jakarta-based service that enforces HLD-C2 §H's claim rules:
 
 - All required sections present; `refusals` and `boundaryPrinciples` non-empty.
 - `kind == INTELLIGENT_COMPONENT` ⇒ `negotiationSurface` present.
@@ -464,7 +479,7 @@ public record Invalidation(
         List<InvalidationTrigger> triggers, RuntimeViolationPolicy onRuntimeViolation
 ) { ... }
 public enum InvalidationTrigger { CLAIM_VERSION_CHANGED, PATTERN_UNSUPPORTED, RUNTIME_ASSUMPTION_VIOLATED }
-public enum RuntimeViolationPolicy { HARD_FAIL }   // settled; HLD-C2 §F
+public enum RuntimeViolationPolicy { HARD_FAIL }   // settled; HLD-C2 §H
 ```
 
 Freeze and load:
@@ -495,7 +510,7 @@ The substrate `ContractInvocation` has a typed `contractId` field but no typed `
 
 The adapter also preserves these keys on result metadata. A delegate `ContractInvocable` may add its own metadata, but it must not override the reserved `dcp.*` keys above; an override attempt is a structured adapter failure.
 
-Validation rules (HLD-C2 §F) enforced by `ContractValidator`:
+Validation rules (HLD-C2 §H) enforced by `ContractValidator`:
 
 - Exactly two parties; both `claimVersion` pinned.
 - `transport.kind == IN_PROCESS` only when the host indicates co-packaging (the validator alone cannot know this; surfaces a warning that must be confirmed at packaging time by Fabric).
@@ -585,9 +600,56 @@ public final class ModelPromptRenderer {
 
 The two renderers consume the same `NegotiationContext` (carrying claim references and any prior captured answers) and produce structurally identical content with different presentation envelopes. Identity is enforced by a property test: for any seed input, `InterviewView.normalized() == PromptView.normalized()` after stripping presentation chrome.
 
+`ActionContext` is a design-time input to the same question-rendering path. It captures selected UI/authoring actions such
+as add, remove, replace, connect, disconnect, and configure runtime without making those actions runtime commands:
+
+```java
+public record ActionContext(
+        ActionOperation operation,
+        ActionTarget target,
+        ActionCapabilities capabilities,
+        ActionConnection connection,
+        Map<String, Object> session,
+        Map<String, Object> constraints
+) { ... }
+
+public enum ActionOperation {
+    ADD_COMPONENT, REMOVE_COMPONENT, REPLACE_COMPONENT, CONNECT, DISCONNECT, CONFIGURE_RUNTIME
+}
+```
+
+Renderers use this context to choose targeted clarification questions. Captured answers still feed normal contract,
+runtime-binding, or product-intent creation; `ActionContext` is never serialized into Plane 3 invocation.
+
 `AnswerCorpus` is an append-only collection of `CapturedAnswer`s for one session. It serializes to the LoRA training tuple shape `(claim, request, expected_disposition, expected_redirection, rationale)` via a documented projection — the bridge described in HLD-C §5.3 between the protocol and the experiment.
 
-### Capability Resolver (HLD-C2 §F, settled #6)
+### Capability Documentation Projection (HLD-C2 §G)
+
+Records in `com.unfurl.dcp.documentation`:
+
+```java
+public record CapabilityDocumentation(
+        URI documentId,
+        TargetEnvironment targetEnvironment,
+        DocumentationSource source,
+        List<DocumentationSurface> surfaces,
+        List<DocumentationSchemaRef> schemas,
+        DocumentationLifecycle lifecycle
+) { ... }
+
+public record DocumentationSource(
+        List<URI> contractIds,
+        List<URI> runtimeBindingIds,
+        List<String> registeredCapabilities
+) { ... }
+```
+
+`CapabilityDocumentationValidator` verifies that each documented capability is backed by an accepted contract id, an
+active runtime binding id, a host-supplied registered capability name, and explicit request/response schema refs.
+It does not scan classpaths, plugin jars, tool registries, provider registries, prompts, model outputs, logs, or DTOs.
+Those sources can inform authoring, but they are not valid documentation proof.
+
+### Capability Resolver (HLD-C2 settled #6)
 
 In `com.unfurl.dcp.resolver`:
 
@@ -618,7 +680,7 @@ Resolution is **strictly structural**:
 
 No model, no AI, no probabilistic matching. Required details are deterministic: scalar equality, list containment, and recursive map subset matching. If multiple candidates satisfy, the resolver returns the highest SemVer match by default; ties (theoretically impossible after exact match) fail with a structured `MULTIPLE_MATCHES` reason.
 
-### Cross-Schema Validation (HLD-C2 §F)
+### Cross-Schema Validation (HLD-C2 §H)
 
 In `com.unfurl.dcp.validation`:
 
@@ -627,6 +689,7 @@ public final class CrossSchemaValidator {
     public SchemaValidationReport validate(Claim claim, WebappManifest manifest);
     public SchemaValidationReport validate(CompositionContract contract, Map<URI, Claim> claimsByUri);
     public SchemaValidationReport validate(RuntimeBinding binding, CompositionContract contract);
+    public SchemaValidationReport validate(CapabilityDocumentation docs, DocumentationInputs inputs);
 }
 ```
 
@@ -636,10 +699,12 @@ Checks performed:
 - A contract's `binding.providerCapability` MUST exist in the provider's claim at a version satisfying `binding.providerCapabilityVersion`.
 - A contract's `parties.*.claimVersion` are pinned; the report includes a "claim version drifted" diagnostic if a newer matching claim is supplied alongside the contract.
 - A runtime binding's `contractId` and `contractVersion` resolve to a real contract; the binding does not attempt to alter ownership/dependency/conflict/trust/invalidation.
+- A capability documentation projection references accepted contracts, active runtime bindings, registered capabilities,
+  explicit schemas, and declared faults; missing or implementation-discovered-only schemas fail validation.
 
 `SchemaValidationReport` is an immutable record carrying structured `Diagnostic`s with severity (`ERROR`, `WARNING`, `INFO`), location (claim URI, contract id, field path), and a stable code.
 
-### Versioning (HLD-C2 §F, settled #6)
+### Versioning (HLD-C2 settled #6)
 
 In `com.unfurl.dcp.versioning`:
 
@@ -654,7 +719,7 @@ public enum VersionAxis { CLAIM, OFFER, CONTRACT }   // HLD-C §8: three indepen
 
 A contract pins both `parties.*.claimVersion` (CLAIM axis) and `binding.providerCapabilityVersion` (OFFER axis); the contract itself carries `contractVersion` (CONTRACT axis). All three are evaluated independently when judging invalidation.
 
-### Trust And Offline Verification (HLD-C2 §F)
+### Trust And Offline Verification (HLD-C2 §H)
 
 In `com.unfurl.dcp.trust`:
 
@@ -874,7 +939,7 @@ Byte stability: a freeze followed by load-and-re-freeze must produce identical b
 
 ## Validation And Error Model
 
-Use layered validation (HLD-C2 §F):
+Use layered validation (HLD-C2 §H):
 
 1. **Field-level constraints** via Jakarta annotations (`@NotNull`, `@NotBlank`, `@NotEmpty`, `@Size`, custom `@Semver` and `@Uri`).
 2. **Object-level schema constraints** via class-level custom validators per schema (claim, manifest, contract, runtime binding).
@@ -890,7 +955,7 @@ Error model:
 Serialization:
 
 - All public models round-trip JSON and YAML stably via Jackson with a snake_case property naming strategy.
-- Wire field names match HLD-C2 §H preferred names. Legacy aliases (HLD-C2 §H compatibility rule) MAY be accepted on input; generated output SHOULD use the preferred names.
+- Wire field names match HLD-C2 §J preferred names. Legacy aliases (HLD-C2 §J compatibility rule) MAY be accepted on input; generated output SHOULD use the preferred names.
 
 ---
 
@@ -942,7 +1007,10 @@ Unit tests:
 - Fault model: declarations must affect at least one need/offer/constraint; propagation conditions are required for parent impact; the propagation gate rejects undeclared faults, suppresses `NONE`, and propagates `DEGRADED`/`BLOCKED` deterministically.
 - `ComponentDescription` projection: every description produces a valid claim and manifest; the two share identity URI and version; manifest permissions derivable from claim.
 - Resolver: structural match success; version-range mismatch; access-policy enforcement; deterministic highest-match.
-- Question schema renderer: human-interview and model-prompt views are structurally identical after normalization.
+- Question schema renderer: human-interview and model-prompt views are structurally identical after normalization;
+  action-context inputs select targeted questions while remaining absent from Plane 3 invocation artifacts.
+- Capability documentation projection: generated OpenAPI/Swagger/AsyncAPI/MCP docs expose only accepted contracts,
+  active runtime bindings, host-registered capabilities, explicit schemas, and declared faults.
 - Contract freeze/load byte stability: round-trip bytes equal.
 - Contract signing/verification: valid signature accepted; tampered bytes rejected; wrong key rejected; missing key returns structured error (not exception).
 - Broker: `present` returns `ACCEPT(MATCH_FOUND)` when contract matches; `REFUSE(NO_MATCHING_CONTRACT)` with redirection when no match; `REFUSE(SIGNATURE_INVALID)` on tampered/wrong-key contracts; `REFUSE(CLAIM_MALFORMED)` on shape failure; `REFUSE(DCP_VERSION_UNSUPPORTED)` for old/new dcp versions. `accept(disposition, registrar, factory, ctx)` accepts only `DispositionKind.ACCEPT`, rejects missing/stale id/version with `BROKER_ACCEPT_INVALID`, fails absent frozen contracts with `CONTRACT_NOT_FOUND`, re-verifies the signature, and registers exactly the contract's single binding through the `CapabilityRegistrar`; `revoke` calls `unregister`; `CONTRACT_INVALIDATED` revokes without re-negotiating.
@@ -963,8 +1031,9 @@ Architecture tests (ArchUnit) — **package-scoped within a single Maven artifac
 - No production package depends on `com.unfurl.dcp.testing`.
 - Package dependency graph matches the allowed edges in this LLD (a `classes().that().resideInAPackage(...)` rule per outbound edge).
 - `broker/` does not import `questions/`, `manifest/`, or `description/`.
+- `broker/` does not import `documentation/`; docs generation is a host projection over accepted runtime state.
 - `broker/` does not import `com.unfurl.substrate.ports.CapabilityRegistry`; it must go through `spi.CapabilityRegistrar`.
-- `description/`, `claim/`, `manifest/`, `runtimebinding/`, `questions/`, `resolver/`, `versioning/`, `validation/` do not import `broker/` or `spi/`.
+- `description/`, `claim/`, `manifest/`, `documentation/`, `runtimebinding/`, `questions/`, `resolver/`, `versioning/`, `validation/` do not import `broker/` or `spi/`.
 - `trust/` does not import `contract.CompositionContract`; only `SignedContract` envelopes cross the boundary; `trust/` is a leaf with no in-artifact upstream dependencies.
 - `unfurl-dcp` may only import `unfurl-substrate`'s composition-api and ports artifacts; never the engine.
 
@@ -988,14 +1057,15 @@ Enterprise tests:
 6. Implement `manifest/` records and `WebappManifestValidator` with claim-projection cross-checks.
 7. Implement `contract/` records, `ContractValidator`, canonical byte serialization, `ContractFreezer`, `ContractLoader`; `Trust.tier` populated via `TrustTierDeriver`.
 8. Implement `runtimebinding/` records and `RuntimeBindingValidator` (no-inline-secrets, runtime-policy firewall).
-9. Implement `questions/` schema model, canonical v0.2 set, `InterviewRenderer`, `ModelPromptRenderer`, `CapturedAnswer`/`AnswerCorpus`.
-10. Implement `resolver/` (`CapabilityResolver`, `ResolutionRequest`, `ResolutionResult`).
-11. Implement `validation/` cross-schema service.
-12. Implement `fault/` (`FaultPolicy`, declarations, runtime signals, and `FaultPropagationGate`).
-13. Implement `spi/` (`ContractStore`, `ContractInvocableFactory`, `CapabilityRegistrar`, `BrokerEventSink`, `NoopBrokerEventSink`).
-14. Implement `broker/` (`CompositionBroker` interface, `DefaultCompositionBroker` with constructor injection, `Disposition`, `DispositionReason`, `RegistrationHandle`, `BrokerEvent`).
-15. Implement `testing/` fixtures: `InMemoryContractStore`, `InMemoryCapabilityRegistrar`, `EchoContractInvocableFactory`, `RecordingBrokerEventSink`.
-16. Complete property tests, ArchUnit tests (package-scoped), and enterprise guardrail tests before downstream repos (`foundry-substrate-offers`, flow, foundry) consume the library.
+9. Implement `questions/` schema model, `ActionContext`, canonical v0.2 set, `InterviewRenderer`, `ModelPromptRenderer`, `CapturedAnswer`/`AnswerCorpus`.
+10. Implement `documentation/` capability documentation projection records and validator.
+11. Implement `resolver/` (`CapabilityResolver`, `ResolutionRequest`, `ResolutionResult`).
+12. Implement `validation/` cross-schema service.
+13. Implement `fault/` (`FaultPolicy`, declarations, runtime signals, and `FaultPropagationGate`).
+14. Implement `spi/` (`ContractStore`, `ContractInvocableFactory`, `CapabilityRegistrar`, `BrokerEventSink`, `NoopBrokerEventSink`).
+15. Implement `broker/` (`CompositionBroker` interface, `DefaultCompositionBroker` with constructor injection, `Disposition`, `DispositionReason`, `RegistrationHandle`, `BrokerEvent`).
+16. Implement `testing/` fixtures: `InMemoryContractStore`, `InMemoryCapabilityRegistrar`, `EchoContractInvocableFactory`, `RecordingBrokerEventSink`.
+17. Complete property tests, ArchUnit tests (package-scoped), and enterprise guardrail tests before downstream repos (`foundry-substrate-offers`, flow, foundry) consume the library.
 
 ---
 

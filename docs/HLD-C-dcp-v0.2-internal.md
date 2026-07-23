@@ -313,6 +313,29 @@ For named resource dependencies, the schema must also answer:
 - Who owns credentials and rotation?
 - Who owns audit and failure accountability for calls made through the binding?
 
+### 5.3A Action-scoped authoring context
+
+Authoring surfaces frequently begin from a selected UI action rather than a blank composition prompt: add this
+component, remove that component, replace a provider, connect two ports, disconnect a pipe, or configure the runtime
+substrate. DCP treats that selected action as Plane 2 context, not as a runtime command.
+
+The `action_context` input gives the authoring layer enough grounded structure to ask the right negotiation questions:
+selected catalog entry or component id, offered capabilities, required needs, substrate needs, selected ports, target
+environment, policy refs, tenant/session identifiers, and correlation id. The output is still ordinary DCP work:
+clarification questions, captured answers, proposed composition contracts, runtime bindings, or product intents that
+create those artifacts.
+
+This keeps the interaction intuitive without weakening the firewall:
+
+- The UI can ask "what must I know before adding/removing/replacing/connecting this?"
+- The authoring agent asks configuration, binding, cleanup, credential-reference, runtime, telemetry, audit, and
+  impact questions.
+- Accepted answers flow into DCP claims, contracts, and runtime bindings.
+- Runtime invocation never sees `action_context` and never re-negotiates.
+
+Adapters that need operator choices should expose enough claim, offer, fault, schema, and runtime-binding metadata for
+the authoring layer to ask these questions. They must not hide required configuration behind host-specific UI state.
+
 ### 5.4 The three negotiation modes
 
 The answerer is swapped depending on how many parties are intelligent. All three produce an identical contract; invocation cannot tell which mode authored it.
@@ -328,6 +351,25 @@ The flywheel must be **federated**: H2C structural examples improve the model lo
 Every contract records *how it was authored*: by Fabric (which model, which version, when, with a human in the loop for H2C) or autonomously by an embedded model. Invocation ignores provenance; trust and audit use it.
 
 The asymmetry that matters: a contract a component negotiated **about itself** (self-negotiated) is less trustworthy than one a neutral party (Fabric) negotiated, because a component has an incentive to over-claim its own ownership. v0.2 position: self-negotiated contracts may warrant stricter validation than neutrally-negotiated ones. This is flagged as a policy the contract schema must support (a trust level derived from provenance), not yet a fixed rule.
+
+---
+
+### 5.6 Capability documentation is a projection of accepted DCP state
+
+Generated runtime-facing documentation, including OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, and SDK
+metadata, is downstream of the frozen DCP state. It must be generated from accepted composition contracts, active
+runtime bindings, host-registered capabilities, explicit request/response schemas, and declared faults.
+
+This is deliberately stricter than implementation discovery. A plugin jar, classpath scan, tool registry, provider
+registry, model catalog, RAG/vector store, prompt, log, or implementation DTO may help an authoring agent understand
+what could be added, but it is not proof that a capability is accepted, bound, executable, or safe to publish.
+
+The documentation projection keeps Flow, Foundry, Fabric, and third-party adapters aligned:
+
+- Product hosts expose only capabilities that the DCP broker accepted and registered.
+- Public/internal/private visibility is a product policy decision over the DCP projection.
+- Missing request/response schemas are documentation gaps, not opportunities to infer a public contract from code.
+- Faults declared in the claim are the operational errors documented across the boundary.
 
 ---
 

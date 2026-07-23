@@ -123,7 +123,31 @@ The adapter must preserve:
 The adapter must not bypass the frozen contract, re-negotiate at runtime, or call product internals
 directly when a DCP contract binding exists.
 
-## 4. Optional Java Annotations
+## 4. Action-Scoped Authoring Assist
+
+Adapters and substrate components must expose enough DCP metadata for authoring tools to ask useful
+questions when a user adds, removes, replaces, connects, disconnects, or configures a component.
+
+The authoring tool may pass DCP `action_context` with:
+
+- operation: add_component, remove_component, replace_component, connect, disconnect, or configure_runtime
+- selected catalog entry, component id, replacement id, or ports
+- offered capabilities, dependency needs, and substrate/runtime needs
+- tenant/session/correlation context
+- target environment or policy refs
+
+Adapter guidance:
+
+- Put required configuration choices in claims, offers, schemas, negotiation surface, runtime binding fields, or
+  catalog metadata. Do not hide them in product-specific UI state.
+- For add/replace/connect/configure flows, make provider, config, secret, endpoint, runtime, telemetry, audit, and
+  policy needs explicit enough for the authoring agent to ask targeted questions.
+- For remove/disconnect flows, declare faults, dependencies, child bindings, and state ownership clearly enough for
+  the authoring agent to ask about impact, cleanup, replacement-before-removal, and revocation.
+- Action context is design-time only. It must not be serialized into runtime invocation payloads or used as a private
+  substitute for composition contracts or runtime bindings.
+
+## 5. Optional Java Annotations
 
 Java annotations may mirror DCP metadata to improve discovery and validation, but they are not the
 protocol. The YAML/JSON DCP artifacts and Java interfaces remain authoritative.
@@ -154,7 +178,7 @@ public final class ContractInvocableNodeExecutor implements NodeExecutor {
 Annotation processors or scanners may validate consistency, but they must not replace DCP claim,
 contract, runtime-binding, and catalog validation.
 
-## 5. Product And Vendor Boundaries
+## 6. Product And Vendor Boundaries
 
 Core DCP/substrate code must stay product-neutral and dependency-light.
 
@@ -178,7 +202,7 @@ Do not put concrete vendor dependencies in the core contract surface:
 Concrete integrations belong in adapter modules behind ports. The DCP-facing module exposes claims,
 contracts, runtime binding metadata, and `ContractInvocable`/`ContractInvocableFactory`.
 
-## 6. Claims Must State Boundaries
+## 7. Claims Must State Boundaries
 
 Each claim must include:
 
@@ -193,7 +217,7 @@ Each claim must include:
 If an adapter wraps an OSS product, do not claim ownership broader than the product truly owns.
 Refuse concerns that belong to the host platform or another component.
 
-## 7. Runtime Bindings Must Use References
+## 8. Runtime Bindings Must Use References
 
 Runtime bindings are environment-specific. They may provide endpoints, configuration refs, secret
 refs, runtime policy, and deployment controls.
@@ -221,7 +245,7 @@ metadata.extensions.childClaimUris
 Do not invent product-specific closure fields as a replacement for child DCP contracts or child DCP
 runtime bindings.
 
-## 8. Faults Are First-Class
+## 9. Faults Are First-Class
 
 Runtime failures that matter across component boundaries must be declared as DCP faults.
 
@@ -238,7 +262,7 @@ Each fault must state:
 Adapters may emit runtime fault signals, but they must not re-negotiate contracts or self-heal beyond
 declared allowed actions in the runtime path.
 
-## 9. Tests Required For Every Adapter
+## 10. Tests Required For Every Adapter
 
 Every DCP adapter/substrate component must test:
 
@@ -254,6 +278,7 @@ Every DCP adapter/substrate component must test:
 - forbidden import boundaries
 - no model/cloud/database/auth/telemetry SDKs in protocol/core modules
 - generated OpenAPI/Swagger or equivalent API docs expose only accepted/runtime-bound capabilities with explicit schemas
+- action-scoped authoring questions are generated from DCP metadata and do not mutate runtime state directly
 
 For Flow adapters, additionally test:
 
@@ -261,7 +286,7 @@ For Flow adapters, additionally test:
 - DCP metadata propagation into node outputs/events
 - `uses: <capability>` dispatch against the accepted DCP capability
 
-## 10. Documentation Required
+## 11. Documentation Required
 
 Each adapter repo must document:
 
@@ -275,10 +300,11 @@ Each adapter repo must document:
 - how to build, test, and package the catalog artifact
 - how capability documentation is projected, including which capabilities are public, which schemas are used,
   and which accepted/runtime-bound capabilities are intentionally not exposed
+- which action-scoped authoring operations the adapter supports and which questions/config fields they require
 
 The docs must point back to this template as the inherited source of truth.
 
-## 11. Governed Capability Documentation
+## 12. Governed Capability Documentation
 
 When an adapter or host generates OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, or any equivalent
 runtime-facing documentation, it must project from the governed DCP surface:

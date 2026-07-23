@@ -68,7 +68,8 @@ Produce a short integration plan containing:
 7. host adapter, if required
 8. declared faults and allowed remediation
 9. public documentation surface, schema source, and capability visibility policy
-10. generated files and test plan
+10. action-scoped authoring operations supported by this adapter and the DCP metadata/questions needed for them
+11. generated files and test plan
 
 Flag assumptions. Do not broaden ownership merely because the wrapped product can technically perform adjacent operations.
 
@@ -82,6 +83,8 @@ Create or update:
 - frozen/signed contract artifact when the repository owns contract freeze/sign output
 - runtime binding: contract id/version, provider/consumer instances, endpoint/config/secret refs, runtime policy, deployment controls, lifecycle, and containment metadata when aggregate
 - catalog entry: normally `META-INF/unfurl-catalog.yaml`
+- action-context authoring metadata: supported add/remove/replace/connect/disconnect/configure-runtime operations,
+  required configuration questions, and where each answer is stored in DCP artifacts
 - adapter implementation exposing `ContractInvocable`
 - `ContractInvocableFactory` when runtime materialization is required
 - explicit host adapter when translating to a native execution surface
@@ -93,6 +96,9 @@ Treat YAML/JSON DCP artifacts and Java interfaces as authoritative. Annotations 
 Never inline credentials. Never let runtime bindings change frozen ownership, dependency satisfaction, conflict decisions, trust, or invalidation rules.
 
 For aggregate integrations, use DCP containment metadata (`contains`, `children`, `containsClaimUris`, or `childClaimUris`) instead of private closure fields.
+
+Action context is design-time only. Use it to drive clarification questions and proposed DCP artifacts or Studio intents.
+Do not serialize it into runtime invocation payloads or use it as a substitute for contracts or runtime bindings.
 
 Capability documentation must be projected from accepted composition contracts, runtime bindings, host-registered
 capabilities, and explicit request/response schemas. Do not publish raw classpath, plugin jar, tool registry,
@@ -160,6 +166,8 @@ Run repository-native build, formatting, static analysis, and tests. Add focused
 - correlation and trace propagation
 - architecture boundaries preventing host or vendor dependencies from entering DCP-facing core
 - generated documentation exposes only accepted/runtime-bound capabilities with explicit schemas
+- action-scoped authoring questions are derived from DCP metadata and feed normal contracts/runtime bindings or
+  product intents; they do not directly mutate runtime state
 
 Use [references/verification-checklist.md](references/verification-checklist.md) as the completion gate. Report commands run, results, assumptions, and remaining external setup.
 
@@ -170,6 +178,8 @@ Use [references/verification-checklist.md](references/verification-checklist.md)
 - Register accepted capabilities only through `CapabilityRegistrar`; do not mutate a read-only substrate registry directly.
 - Verify signatures offline using caller-supplied keys.
 - Do not add transport, persistence, key discovery, or design-time reasoning to `unfurl-dcp` itself.
+- Do not keep required operator answers only in UI/session state; bind them into DCP artifacts or explicit product
+  intents after clarification.
 - Do not claim completion when placeholders, unresolved secrets, unverified schemas, or unrun lifecycle tests remain.
 
 ## Completion output
