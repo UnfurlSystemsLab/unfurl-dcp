@@ -234,3 +234,15 @@ Required rule classes include:
 - Source-of-truth schema behavior for downstream product embedding.
 
 In short: Python remains a research support lane; Java is the required production implementation lane for `unfurl-dcp`.
+
+---
+
+## GitHub Packages
+
+This repository participates in the `UnfurlSystemsLab` private Maven package chain. The Lab source repository is
+`UnfurlSystemsLab/dcp`, while the Maven artifact coordinates remain `com.unfurl.dcp:unfurl-dcp`.
+
+- Publish: GitHub Actions deploys this repository's Maven artifact to `https://maven.pkg.github.com/UnfurlSystemsLab/dcp` using Maven server id `github`.
+- Consume: this repository resolves internal `com.unfurl...` artifacts through `https://maven.pkg.github.com/UnfurlSystemsLab/*`.
+- Credentials: local and CI Maven settings must provide server id `github`; use `GITHUB_TOKEN` for same-repository publish and `CI_REPO_TOKEN` or a PAT with `read:packages` for cross-repository private dependency reads.
+- Bootstrap order: publish `unfurl-substrate` first, then publish `unfurl-dcp`, then publish `unfurl-substrate-api` and higher-level repositories.
