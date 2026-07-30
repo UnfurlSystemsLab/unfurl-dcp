@@ -1,5 +1,10 @@
 # unfurl-dcp
 
+Use `unfurl-dcp` when a component, adapter, compiler, or runtime needs to speak
+the same contract language: publish a claim, negotiate a composition contract,
+or invoke another component against a frozen contract. It is the protocol library
+that keeps Unfurl products composable without hard-wiring each other.
+
 `unfurl-dcp` is the Java implementation of the Unfurl Domain Claim Protocol: claim records, schema codecs, canonical hashes, and contract-facing protocol types.
 
 ## Docs
