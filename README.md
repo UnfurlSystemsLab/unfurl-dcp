@@ -7,6 +7,11 @@ that keeps Unfurl products composable without hard-wiring each other.
 
 `unfurl-dcp` is the Java implementation of the Unfurl Domain Claim Protocol: claim records, schema codecs, canonical hashes, and contract-facing protocol types.
 
+## License
+
+`unfurl-dcp` is published under the [Apache License 2.0](LICENSE). Contributions
+are accepted under the same license unless explicitly stated otherwise.
+
 ## Docs
 
 - `docs/HLD-C-dcp-v0.2-internal.md`
