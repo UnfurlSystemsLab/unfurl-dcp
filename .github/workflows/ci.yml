@@ -42,31 +42,26 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress --update-snapshots verify
 
   publish:
-    name: Publish package
+    name: Request package publish
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')))
 
     steps:
-      - name: Checkout unfurl-dcp
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-          server-id: github
-          server-username: MAVEN_GITHUB_USER
-          server-password: MAVEN_GITHUB_TOKEN
-
-      - name: Deploy unfurl-dcp to GitHub Packages
+      - name: Request Lab changed package publish
         env:
-          MAVEN_GITHUB_USER: ${{ github.actor }}
-          MAVEN_GITHUB_TOKEN: ${{ secrets.CI_REPO_TOKEN != '' && secrets.CI_REPO_TOKEN || secrets.GITHUB_TOKEN }}
-        run: >
-          mvn --batch-mode --no-transfer-progress
-          -DskipTests
-          -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/unfurlsystemslab/unfurl
-          deploy
+          GH_TOKEN: ${{ secrets.CI_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "::error title=Missing CI_REPO_TOKEN::Configure CI_REPO_TOKEN with repo, workflow, read:packages, and write:packages so this repository can dispatch the Lab package publish workflow."
+            exit 1
+          fi
+          gh workflow run publish-lab-maven.yml \
+            --repo UnfurlSystemsLab/unfurl \
+            --ref master \
+            -f component_ref=master \
+            -f skip_tests=true \
+            -f maven_threads=1 \
+            -f publish_scope=changed \
+            -f changed_repository="${{ github.event.repository.name }}"
