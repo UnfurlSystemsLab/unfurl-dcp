@@ -1,0 +1,4 @@
+interface:
+  display_name: "DCP Runtime Graph Generator"
+  short_description: "Generate Flow and Foundry graphs for assemblies"
+  default_prompt: "Use $dcp-runtime-graph-generator to generate and validate runtime graphs for my DCP assembly."

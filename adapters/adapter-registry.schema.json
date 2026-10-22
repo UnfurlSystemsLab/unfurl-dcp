@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:unfurl:authoring:registry",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "adapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "repository": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "repository",
+              "path"
+            ],
+            "additionalProperties": false
+          },
+          "claim": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          },
+          "catalog": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "urn:unfurl:authoring:common#/$defs/capability"
+            },
+            "minItems": 1
+          },
+          "validation": {
+            "type": "array",
+            "items": {
+              "$ref": "urn:unfurl:authoring:common#/$defs/check"
+            },
+            "minItems": 0
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 0
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "domains",
+          "source",
+          "claim",
+          "catalog",
+          "capabilities",
+          "validation",
+          "limitations",
+          "artifacts"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "revision",
+    "adapters"
+  ],
+  "additionalProperties": false
+}

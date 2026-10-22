@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:unfurl:authoring:call-profile",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "manifestSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "principalId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "grants": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "services": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "minLength": 1
+          },
+          "credentialHeaders": {
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^secret://env/[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          }
+        },
+        "required": [
+          "origin",
+          "credentialHeaders"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "gatewaySecretRef": {
+      "type": "string",
+      "pattern": "^secret://env/[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120
+    },
+    "maxResponseBytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8388608
+    },
+    "maxRequestBytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2097152
+    },
+    "concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "journalPath": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "manifestSha256",
+    "tenantId",
+    "principalId",
+    "grants",
+    "services",
+    "gatewaySecretRef",
+    "timeoutSeconds",
+    "maxResponseBytes",
+    "maxRequestBytes",
+    "concurrency",
+    "journalPath"
+  ],
+  "additionalProperties": false
+}

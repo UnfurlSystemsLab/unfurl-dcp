@@ -1,0 +1,1443 @@
+{
+  "schemaVersion": 1,
+  "operations": {
+    "fabric.artifact-inventory": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.artifact-inventory",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.catalog-admit": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.catalog-admit",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.catalog-query": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.catalog-query",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.catalog-verify": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.catalog-verify",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.file-list": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.file-list",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.assembly-create": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.assembly-create",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.needs-extract": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.needs-extract",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.session-start": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.session-start",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.session-history": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.session-history",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.authoring-converse": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.authoring-converse",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.session-intent-apply": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.session-intent-apply",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.dynamic-dcp-project": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.dynamic-dcp-project",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.deployment-resolve": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.deployment-resolve",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.candidate-compile": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.candidate-compile",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.export-download": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.export-download",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.export-download-all": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.export-download-all",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.runtime-binding-generate": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.runtime-binding-generate",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.foundry-root-assemble": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.foundry-root-assemble",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.flow-root-assemble": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.flow-root-assemble",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "fabric.container-image-build": {
+      "service": "fabric",
+      "path": "/studio/tools/fabric.container-image-build",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId"
+        ]
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "flow.workflow-draft-questions": {
+      "service": "flow",
+      "path": "/tools/flow.workflow-draft-questions",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "flow.workflow-validate": {
+      "service": "flow",
+      "path": "/tools/flow.workflow-validate",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "flow.tool-suggest": {
+      "service": "flow",
+      "path": "/tools/flow.tool-suggest",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "flow.connector-suggest": {
+      "service": "flow",
+      "path": "/tools/flow.connector-suggest",
+      "effect": "read",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "flow.workflow-register": {
+      "service": "flow",
+      "path": "/tools/flow.workflow-register",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    },
+    "flow.connector-register": {
+      "service": "flow",
+      "path": "/tools/flow.connector-register",
+      "effect": "write",
+      "argumentsSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": [
+          "success",
+          "output"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "object"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "beforeHooks": [
+        "scope",
+        "input",
+        "intent"
+      ],
+      "afterHooks": [
+        "classify",
+        "schema",
+        "redact",
+        "outcome"
+      ]
+    }
+  }
+}

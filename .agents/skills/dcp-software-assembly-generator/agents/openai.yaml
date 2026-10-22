@@ -1,0 +1,4 @@
+interface:
+  display_name: "DCP Software Assembly Generator"
+  short_description: "Build software from governed DCP capabilities"
+  default_prompt: "Use $dcp-software-assembly-generator to interview me and build a runnable DCP software assembly."

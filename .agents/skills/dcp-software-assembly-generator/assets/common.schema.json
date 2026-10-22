@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:unfurl:authoring:common",
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "effect": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        },
+        "approvalPolicy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reconciliationPolicy": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "effect"
+      ],
+      "additionalProperties": false
+    },
+    "check": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "enum": [
+            "structural",
+            "local",
+            "protocol",
+            "sandbox",
+            "live",
+            "startup"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "fail",
+            "not-run"
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "report": {
+          "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+        }
+      },
+      "required": [
+        "level",
+        "outcome",
+        "command",
+        "report"
+      ],
+      "additionalProperties": false
+    },
+    "governance": {
+      "type": "object",
+      "properties": {
+        "concern": {
+          "enum": [
+            "authentication",
+            "authorization",
+            "secrets",
+            "policy",
+            "approvals",
+            "audit",
+            "monitoring",
+            "quotas",
+            "costs"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "bound",
+            "unresolved",
+            "not-applicable"
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          },
+          "minItems": 0
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "concern",
+        "required",
+        "owner",
+        "status",
+        "rationale",
+        "bindings",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "selected": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/capability"
+          },
+          "minItems": 1
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "capabilities",
+        "artifacts"
+      ],
+      "additionalProperties": false
+    },
+    "connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "lifecycleOwner",
+        "protocol",
+        "authorizationModel",
+        "status",
+        "credentialRefs",
+        "bindings",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lifecycleOwner": {
+          "const": "host-connection-provider"
+        },
+        "protocol": {
+          "enum": [
+            "oauth2",
+            "provider-token"
+          ]
+        },
+        "authorizationModel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "declared",
+            "configured",
+            "verified"
+          ]
+        },
+        "credentialRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "role",
+              "ref"
+            ],
+            "properties": {
+              "role": {
+                "enum": [
+                  "developer",
+                  "client"
+                ]
+              },
+              "ref": {
+                "type": "string",
+                "pattern": "^secret://[^\\s]+$"
+              }
+            }
+          }
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          }
+        }
+      }
+    },
+    "strategy": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/capability"
+          },
+          "minItems": 1
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:unfurl:authoring:common#/$defs/artifact"
+          },
+          "minItems": 1
+        },
+        "role": {
+          "const": "strategy"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "capabilities",
+        "artifacts",
+        "role"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

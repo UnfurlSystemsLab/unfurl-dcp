@@ -4,6 +4,32 @@ The **Domain Claim Protocol (DCP)** is a machine-readable semantic specification
 
 Components declare their capabilities, boundaries, dependencies, and faults. These declarations give developers a structural basis for a visual **human harness**, where people can inspect and question proposed multi-agent workflows before they run.
 
+## Build software through DCP capabilities
+
+The [software assembly skill suite](docs/HLD-dcp-software-assembly-skills.md) interviews users,
+reuses or creates component adapters, resolves governance choices, composes through Fabric,
+and generates selected Flow/Foundry graphs and UI. The shared
+[adapter registry](adapters/adapter-registry.json) indexes inspected adapters by domain; it
+does not grant authority or replace Fabric admission.
+
+Install the four canonical Codex skills explicitly:
+
+```text
+python -m pip install -r .agents/skills/dcp-software-assembly-generator/scripts/requirements.txt
+python .agents/skills/dcp-software-assembly-generator/scripts/suite.py install
+```
+
+Then invoke `$dcp-software-assembly-generator` and describe the component and first user flow.
+Installation refuses differing local files; inspect changes before intentionally synchronizing
+with `--replace-local`. See [handoff and utility instructions](.agents/skills/dcp-software-assembly-generator/references/handoffs.md)
+and [implementation contracts](docs/LLD-dcp-software-assembly-skills.md) for validation and resumption.
+
+The skills can now make guarded authoring API calls using the
+[API execution guide](.agents/skills/dcp-software-assembly-generator/references/api-execution.md).
+The native graph projector emits explicit preflight/call/post gates, Foundry reasoning resources
+and a draft Kotak capability graph. Validate generated resources with the standalone development
+module; credentials and runtime bindings must be provisioned before activation.
+
 ## 🛑 The problem: agent spaghetti and black boxes
 
 When agents chain APIs, code execution, and other agents, the resulting workflow can be difficult to review. Data schemas describe types, but they do not by themselves explain a component's intent, ownership, operational boundaries, or failure behavior. Without explicit domain contracts, systems risk silent failures, context drift, and actions outside their intended scope.

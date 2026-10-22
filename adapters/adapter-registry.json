@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "adapters": [
+    {
+      "id": "unfurl://component/kotak-neo-adapter",
+      "version": "0.1.0",
+      "domains": [
+        "finance",
+        "brokerage"
+      ],
+      "source": {
+        "repository": "https://github.com/UnfurlSystemsLab/unfurl-adapter-kotak-neo",
+        "path": "../../unfurl-adapter-kotak-neo"
+      },
+      "claim": {
+        "path": "kotak-neo-core/src/main/resources/dcp/claim.json",
+        "sha256": "efdc2934b4099de95a492238ff7bcfeadf0bbc00de32455f6b46c5b48bd8765f",
+        "kind": "claim"
+      },
+      "catalog": {
+        "path": "kotak-neo-core/src/main/resources/META-INF/unfurl-catalog.yaml",
+        "sha256": "550ad493b80570f9d9fa63150b222ad80f9626d2483081d4d79a9edbcd5fab56",
+        "kind": "catalog"
+      },
+      "artifacts": [
+        {
+          "path": "kotak-neo-core/src/main/resources/dcp/schemas/gtt.instructions.list.input.json",
+          "sha256": "a3c1e26ffb09941f3f1ffbc9cbda3add4d4c7a2ebc9f4496b4da9d81314d6b8b",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "kotak-neo-core/src/main/resources/dcp/schemas/gtt.instructions.list.output.json",
+          "sha256": "ad14ac72d9e05a577583d0eefcb4621e2c283b1bf37476d1b20816a9e3fbad43",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.holdings.list.input.json",
+          "sha256": "a3c1e26ffb09941f3f1ffbc9cbda3add4d4c7a2ebc9f4496b4da9d81314d6b8b",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.holdings.list.output.json",
+          "sha256": "f6b1e470a3738c2b6d26ccf5b35d17256ac1c74e6eb4e605d4078e4d32ae20a8",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.mtf-holdings.list.input.json",
+          "sha256": "a3c1e26ffb09941f3f1ffbc9cbda3add4d4c7a2ebc9f4496b4da9d81314d6b8b",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.mtf-holdings.list.output.json",
+          "sha256": "f6b1e470a3738c2b6d26ccf5b35d17256ac1c74e6eb4e605d4078e4d32ae20a8",
+          "kind": "operation-schema"
+        }
+      ],
+      "capabilities": [
+        {
+          "name": "portfolio.holdings.list",
+          "version": "0.1.0",
+          "effect": "read"
+        },
+        {
+          "name": "portfolio.mtf-holdings.list",
+          "version": "0.1.0",
+          "effect": "read"
+        },
+        {
+          "name": "gtt.instructions.list",
+          "version": "0.1.0",
+          "effect": "read"
+        }
+      ],
+      "validation": [
+        {
+          "level": "local",
+          "outcome": "pass",
+          "command": "Historical report only: mvn -B -o verify; see report dated 2026-10-16, not rerun by registry creation",
+          "report": {
+            "path": "docs/EVIDENCE-read-only-adapter.md",
+            "sha256": "da6a411e5674aa081f9129877202ab0b5fe5bf86dbb3c508c3c6ea715137480f",
+            "kind": "recorded-evidence"
+          }
+        }
+      ],
+      "limitations": [
+        "Read-only holdings, MTF holdings and GTT instruction listing; no order or GTT mutation.",
+        "Validation is a pinned historical report, not a newly executed adapter test or live-provider certification.",
+        "Host identity/account grants, session/configuration, audit, telemetry and quota bindings are required."
+      ]
+    }
+  ]
+}

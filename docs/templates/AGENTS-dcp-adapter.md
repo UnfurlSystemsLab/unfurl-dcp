@@ -12,6 +12,12 @@ unfurl-dcp/docs/templates/AGENTS-dcp-adapter.md
 
 ## Codex Skill
 
+For an end-to-end software project, start with `dcp-software-assembly-generator`. It hands missing
+business or governance integrations to `dcp-component-adapter-creator`, which applies the canonical
+`add-dcp-capability` protocol workflow below. Optional Flow/Foundry graph creation is owned by
+`dcp-runtime-graph-generator`. See `docs/HLD-dcp-software-assembly-skills.md` and install the suite
+through its explicit installation utility when using these skills outside this checkout.
+
 When Codex is being used to create, review, or repair a DCP adapter or substrate component, invoke:
 
 ```text
