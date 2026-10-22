@@ -3,6 +3,8 @@ target/
 */target/
 **/target/
 *.class
+__pycache__/
+*.pyc
 
 # Test framework state
 .jqwik-database

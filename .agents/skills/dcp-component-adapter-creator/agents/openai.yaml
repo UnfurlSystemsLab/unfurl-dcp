@@ -1,0 +1,4 @@
+interface:
+  display_name: "DCP Component Adapter Creator"
+  short_description: "Create Domain Claim Protocol component adapters"
+  default_prompt: "Use $dcp-component-adapter-creator to ask the relevant questions and design and implement a Domain Claim Protocol adapter for my component, including claim JSON for assembly authoring."

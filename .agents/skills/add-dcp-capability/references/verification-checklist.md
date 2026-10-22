@@ -10,6 +10,9 @@
 
 ## Artifacts
 
+Apply consumer/contract/binding checks to the owning assembly integration or labelled test fixtures;
+do not require a standalone provider to fabricate production assembly artifacts.
+
 - [ ] Claim loads and passes DCP validation.
 - [ ] Consumer need resolves to the provider offer structurally.
 - [ ] Composition contract binds to an existing provider capability/version.
@@ -29,6 +32,9 @@
 - [ ] Registration occurs through `CapabilityRegistrar`.
 - [ ] Contract, capability, component, correlation, and trace metadata survive translation.
 - [ ] Errors map to structured results or declared faults.
+- [ ] Schemas, descriptors, claim and host projections agree with API evidence and implementation.
+- [ ] Trusted scope and exact operation grants are enforced; missing mandatory bindings fail closed.
+- [ ] Write approvals bind exact intent; ambiguous effects cannot be blindly retried.
 - [ ] Action-context clarification does not mutate runtime state directly and is not serialized into invocation payloads.
 - [ ] Generated docs project from accepted/runtime-bound capabilities, not classpath or registry scans.
 
@@ -41,6 +47,7 @@
 - [ ] Invalid or tampered signature is refused offline.
 - [ ] Stale disposition fails re-verification.
 - [ ] Invalidation unregisters without runtime renegotiation.
+- [ ] Retained invocables reject calls after revocation; cross-tenant/account calls are denied.
 
 ## Tests and architecture
 
@@ -59,3 +66,4 @@
 - [ ] Generated artifacts contain no unexplained placeholders.
 - [ ] Assumptions and unsupported areas are documented.
 - [ ] External keys, contracts, endpoints, and deployment steps are identified.
+- [ ] Structural/local/protocol/sandbox/live evidence is distinguished, including historical reports.

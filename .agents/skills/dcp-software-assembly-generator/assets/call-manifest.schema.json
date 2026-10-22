@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:unfurl:authoring:call-manifest",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "operations": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9.-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "enum": [
+              "fabric",
+              "flow"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^/[a-z0-9./-]+$"
+          },
+          "effect": {
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "argumentsSchema": {
+            "type": "object"
+          },
+          "resultSchema": {
+            "type": "object"
+          },
+          "beforeHooks": {
+            "const": [
+              "scope",
+              "input",
+              "intent"
+            ]
+          },
+          "afterHooks": {
+            "const": [
+              "classify",
+              "schema",
+              "redact",
+              "outcome"
+            ]
+          }
+        },
+        "required": [
+          "service",
+          "path",
+          "effect",
+          "argumentsSchema",
+          "resultSchema",
+          "beforeHooks",
+          "afterHooks"
+        ],
+        "additionalProperties": false
+      },
+      "minProperties": 1
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "operations"
+  ],
+  "additionalProperties": false
+}

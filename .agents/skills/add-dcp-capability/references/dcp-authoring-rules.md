@@ -8,6 +8,10 @@
 
 Every third-party adapter should provide:
 
+Ownership qualification: the provider owns its claim JSON, catalog, schemas and invocation adapter.
+Consumer-specific artifacts below are produced by the assembly owner, or supplied as clearly labelled
+examples when outside the adapter repository's responsibility. Freeze/sign only with authorized keys.
+
 1. A provider claim describing identity, domain, refusals, dependencies, offers, conflict resolution, integration ports, faults, and metadata.
 2. A consumer need that can structurally resolve to the provider offer.
 3. A composition contract that freezes the consumer need, provider capability, mapping, transport, provenance, trust, and invalidation policy.
@@ -106,3 +110,16 @@ The host supplies:
 - The broker is the only component that drives mutable capability registration through `CapabilityRegistrar`.
 - DCP annotations may assist discovery but cannot replace canonical protocol artifacts.
 - Product docs must name any unsupported DCP concern explicitly rather than hiding the gap in adapter code.
+
+## Evidence, enforcement and operation effects
+
+Maintain per-operation API evidence, schemas, scope, side effects, failure/retry policy and tests.
+Never infer unsupported writes or retry safety from captured reads. Keep schemas and host projections
+in agreement with actual implementation. Use host-selected identity/account scope and enforce grants;
+metadata and arguments cannot establish authority. Required governance ports must be really bound,
+and mandatory bindings fail closed. A no-op broker event sink is not a substitute for required audit.
+
+For writes, document exact-intent approval and idempotency/status reconciliation before retrying an
+ambiguous result. Removal from a registry must be accompanied by fencing retained invocations in the
+owning layer. Verify those properties with denial and failure tests, and report validation scope
+without equating synthetic or historical reports with live-provider certification.
