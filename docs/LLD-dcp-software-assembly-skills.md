@@ -120,6 +120,9 @@ Optional `callPlan` handoff metadata pins a call-manifest artifact and exact ope
 `--artifacts` also verifies hashes and operation lookup. Real invocation additionally enforces
 the pinned host profile and manifest digest. Native validation runs as a separate development
 Maven module, with product dependencies kept outside the DCP production POM.
+Because that module is standalone, it declares the same configurable Lab GitHub Packages
+repository as the root build, including snapshot resolution and server id `github`. CI supplies
+credentials through Maven settings; dependency availability is required and must not be skipped.
 
 ## Installation and validation
 
