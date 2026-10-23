@@ -174,6 +174,12 @@ derived results after drift. Raw captures and credential values remain outside t
 
 ## Boundaries
 
+The outbound [Codex development-task adapter](DESIGN-codex-development-task-adapter.md)
+provides a locally implemented host-bound A06 executor, separate from the inbound client gateway.
+Its provider artifacts and Flow wait/result integration do not constitute a deployed coding
+service. Activation still requires host isolation, authentication, decision authority, independent
+verification and the real-provider acceptance gate. The complete package coordinator remains proposed.
+
 Native Flow/Foundry validators remain authoritative. Flow owns deterministic orchestration;
 Foundry owns agent decisions and canonical inspectable agent graphs. Combined graphs use
 the current governed `agent.run`/pinned `agentRef` interface where supported; no inline

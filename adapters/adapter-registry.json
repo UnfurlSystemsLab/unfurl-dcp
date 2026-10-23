@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 3,
   "adapters": [
     {
       "id": "unfurl://component/kotak-neo-adapter",
@@ -88,6 +88,170 @@
         "Read-only holdings, MTF holdings and GTT instruction listing; no order or GTT mutation.",
         "Validation is a pinned historical report, not a newly executed adapter test or live-provider certification.",
         "Host identity/account grants, session/configuration, audit, telemetry and quota bindings are required."
+      ]
+    },
+    {
+      "id": "unfurl://component/codex-development-adapter",
+      "version": "0.1.0",
+      "domains": [
+        "development",
+        "coding",
+        "agent-runtime"
+      ],
+      "source": {
+        "repository": "https://github.com/UnfurlSystemsLab/unfurl-adapter-codex",
+        "path": "../../unfurl-adapter-codex"
+      },
+      "claim": {
+        "path": "codex-core/src/main/resources/dcp/claim.json",
+        "sha256": "28568d43a94a06d0394146f4a3dfe5e26c9004a55165158970ac1f19a0ca381f",
+        "kind": "claim"
+      },
+      "catalog": {
+        "path": "codex-core/src/main/resources/META-INF/unfurl-catalog.yaml",
+        "sha256": "d5ceb0f3f1ff3bed073683f1e098bd256cfddeb461a54615c8a0a97de07fc30d",
+        "kind": "catalog"
+      },
+      "artifacts": [
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.answer.input.json",
+          "sha256": "4ebc465f090b8926f1de7d8f4fda7b8379fbaeaf4d3bdd54cb063bdbc8106fb3",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.answer.output.json",
+          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.cancel.input.json",
+          "sha256": "b7bfbd9aecd951e85b52f6a4528d54bfac664b80121ded6b28b038e1a66ef9a5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.cancel.output.json",
+          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.reconcile.input.json",
+          "sha256": "b7bfbd9aecd951e85b52f6a4528d54bfac664b80121ded6b28b038e1a66ef9a5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.reconcile.output.json",
+          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.result.input.json",
+          "sha256": "6b208b0b36fce0f1711d9f93a477b9ed4d92e499d79ee3e7a674a8f9b08e1d2c",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.result.output.json",
+          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.status.input.json",
+          "sha256": "6b208b0b36fce0f1711d9f93a477b9ed4d92e499d79ee3e7a674a8f9b08e1d2c",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.status.output.json",
+          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.submit.input.json",
+          "sha256": "28932fe603ccb7d0496445fbdc4a843fa432680372659301e48f6283891203ee",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "codex-core/src/main/resources/dcp/schemas/development.task.submit.output.json",
+          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "kind": "operation-schema"
+        }
+      ],
+      "capabilities": [
+        {
+          "name": "development.task.submit",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Host-authorized pinned skill, requirements, workspace and execution profile; external effects require host policy approval.",
+          "reconciliationPolicy": "Durable task journal and scoped status; OUTCOME_UNKNOWN is never automatically replayed. Reconcile contains the recorded sandbox and independently verifies surviving artifacts."
+        },
+        {
+          "name": "development.task.status",
+          "version": "0.1.0",
+          "effect": "read"
+        },
+        {
+          "name": "development.task.answer",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Authenticated host Decisions port verifies exact interaction intent, answer and revision; agent text cannot authorize.",
+          "reconciliationPolicy": "Durable task journal and scoped status; OUTCOME_UNKNOWN is never automatically replayed. Reconcile contains the recorded sandbox and independently verifies surviving artifacts."
+        },
+        {
+          "name": "development.task.cancel",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Current owner authorization and exact task revision before containment control.",
+          "reconciliationPolicy": "Durable task journal and scoped status; OUTCOME_UNKNOWN is never automatically replayed. Reconcile contains the recorded sandbox and independently verifies surviving artifacts."
+        },
+        {
+          "name": "development.task.reconcile",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Current owner authorization and exact revision; contains old sandbox and inspects outputs without a new turn.",
+          "reconciliationPolicy": "Durable task journal and scoped status; OUTCOME_UNKNOWN is never automatically replayed. Reconcile contains the recorded sandbox and independently verifies surviving artifacts."
+        },
+        {
+          "name": "development.task.result",
+          "version": "0.1.0",
+          "effect": "read"
+        }
+      ],
+      "validation": [
+        {
+          "level": "local",
+          "outcome": "pass",
+          "command": "mvn -B -o install with codex.binary, codex.schemas and docker.binary; 26 tests passed on 2026-10-23",
+          "report": {
+            "path": "docs/EVIDENCE-codex-adapter.md",
+            "sha256": "0477435de8d4d729dd7aa184233298f1094b74fbfe58d0a7b2e75d2229c1a170",
+            "kind": "recorded-evidence"
+          }
+        },
+        {
+          "level": "protocol",
+          "outcome": "pass",
+          "command": "scripts/Test-CodexProtocol.ps1; installed Codex initialization and skill discovery only, no model turn",
+          "report": {
+            "path": "docs/EVIDENCE-codex-adapter.md",
+            "sha256": "0477435de8d4d729dd7aa184233298f1094b74fbfe58d0a7b2e75d2229c1a170",
+            "kind": "recorded-evidence"
+          }
+        },
+        {
+          "level": "sandbox",
+          "outcome": "pass",
+          "command": "mvn -B -o -pl codex-stdio -am -Ddocker.binary=<installed-docker> verify; controlled provider container isolation and teardown",
+          "report": {
+            "path": "docs/EVIDENCE-codex-adapter.md",
+            "sha256": "0477435de8d4d729dd7aa184233298f1094b74fbfe58d0a7b2e75d2229c1a170",
+            "kind": "recorded-evidence"
+          }
+        }
+      ],
+      "limitations": [
+        "Source published to the private UnfurlSystemsLab repository; no deployed service or live-model certification.",
+        "Mandatory host authorization, workspace fencing, decision authority, audit, credential/profile and independent verification bindings are not permissive defaults.",
+        "Native Codex validation covers initialization and skill discovery only. Coding and Docker tests use controlled providers; real model coding and production account access remain unverified.",
+        "Flow waits require the matching Flow implementation; full software-package coordinator remains separate work.",
+        "Single-owner file store; distributed task storage is not implemented."
       ]
     }
   ]
