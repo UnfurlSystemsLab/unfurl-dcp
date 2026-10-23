@@ -43,6 +43,12 @@ adapter/strategy workflow and return tested artifacts. Unattended authoring requ
 host-owned development-task port/runner with scoped workspace permissions; that is a new binding,
 not an existing Fabric endpoint. The Flow parent waits for the correlated result when necessary.
 
+The [Foundry/Flow to Codex app-server adapter](DESIGN-codex-development-task-adapter.md)
+now has a local host-bound implementation: a separate DCP provider, pinned skills/protocol,
+durable task/interaction state, independent-verification boundary and Flow-owned wait/result
+projection. The adapter repository records exact evidence and host prerequisites. This does not
+install a coding service or make the full package coordinator operational automatically.
+
 Use logical service references resolved from runtime bindings, never hardcoded localhost ports.
 Do not auto-start a deployed workflow or submit real orders while authoring the plan.
 

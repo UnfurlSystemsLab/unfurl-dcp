@@ -146,6 +146,12 @@ these proposed fields into existing closed schemas without a versioned compatibi
 
 ### Admission and execution ports
 
+See [Codex development-task adapter design](DESIGN-codex-development-task-adapter.md) for the
+implemented local outbound provider contract, version-pinned wire mapping, workspace/process lifecycle,
+durable controls and explicit Flow task-wait integration. Activation still requires the documented
+host authorization, sandbox, credentials and verification bindings. No generic DCP response is assumed
+to suspend a Flow node automatically.
+
 Expose skill `create-dcp-software-package` and proposed operation `create_dcp_software_package`
 through a provider-owned DCP claim, operation schemas, accepted contract and runtime binding.
 The operation accepts package name, permitted target-directory reference and optional saved-run
@@ -158,8 +164,10 @@ Model orchestration, development-task execution, workspace access, interaction, 
 audit and secrets as DCP ports before implementing concrete bindings. Flow hosts the coordinator;
 Foundry invokes pinned specialist agents using existing governed execution seams; Fabric performs
 real composition. A Foundry agent definition cannot execute a Codex SKILL.md as code. The explicit
-development runner supplies that bridge with scoped filesystem/process/network access. Until it
-exists, a local Codex handoff is an honest manual wait, not an autonomous pipeline completion.
+development runner supplies that bridge with scoped filesystem/process/network access. The local
+`unfurl-adapter-codex` implementation supplies this execution boundary; the package coordinator and
+its stage bindings remain proposed. Without those bindings, a local Codex handoff remains a manual
+wait and must not be reported as autonomous pipeline completion.
 
 ### Workspace and handoff protocol
 
