@@ -8,6 +8,8 @@ import argparse
 import json
 from pathlib import Path
 
+from jsonschema import ValidationError
+
 import suite
 
 
@@ -55,7 +57,9 @@ def main():
     args = parser.parse_args()
     try:
         print(json.dumps(verify(args.kind, args.handoff, args.workspace, args.project_id, args.progress), indent=2))
-    except (ValueError, OSError, KeyError) as error:
+    except (ValueError, OSError, KeyError, TypeError, AttributeError, ValidationError) as error:
+        # Schema violations and malformed handoffs (wrong JSON types) are validation failures too: report the sanitized type,
+        # never a traceback.
         parser.exit(1, f"Handoff verification failed: {type(error).__name__}\n")
 
 

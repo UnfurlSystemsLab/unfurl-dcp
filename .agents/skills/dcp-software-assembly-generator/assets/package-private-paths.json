@@ -1,0 +1,34 @@
+{
+  "deniedArtifactKinds": [
+    "capture",
+    "credentials",
+    "journal",
+    "provider-capture",
+    "raw-capture",
+    "secret",
+    "task-journal",
+    "transcript"
+  ],
+  "deniedFileNames": [
+    "auth.json"
+  ],
+  "deniedSegmentPrefixes": [
+    ".env"
+  ],
+  "deniedSegments": [
+    ".codex",
+    ".git",
+    ".package",
+    "captures",
+    "credentials",
+    "journals",
+    "secrets",
+    "transcripts"
+  ],
+  "deniedSuffixes": [
+    ".key",
+    ".pem"
+  ],
+  "description": "Canonical private-path policy for packaged software artifacts. Owned by the DCP software assembly suite; Flow ships a byte-identical copy that the adapter registry pins.",
+  "schemaVersion": 1
+}

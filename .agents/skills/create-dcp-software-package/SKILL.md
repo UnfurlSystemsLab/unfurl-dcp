@@ -28,8 +28,10 @@ intent and expiry; a model-generated `accept` or conversational acknowledgement 
 Credentials go through the host's secure login surface and SecretRefs.
 
 On a blocker, show the exact missing operation/binding/evidence. Resume only after it is resolved
-and the host rechecks pins. An unknown start can adopt only an existing verified executionId;
-never start a replacement coding turn. Unknown answers require continuation-state reconciliation,
+and the host rechecks pins. After an unknown start call `resume`: the coordinator restarts the stage
+only when Flow's store proves it never ran, adopts a single matching execution, and asks for an
+explicit executionId when several exist. Never start a replacement coding turn yourself. On
+`PACKAGE_STALE_REVISION`, read status and retry with the current revision. Unknown answers require continuation-state reconciliation,
 not automatic resubmission. Cancellation is complete only after host-confirmed child containment.
 
 At completion retrieve `software.package.result`. Verify the package/manifest/evidence digests

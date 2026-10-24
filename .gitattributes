@@ -1,0 +1,2 @@
+# The package private-path policy is compared by exact bytes with Flow's pinned copy; keep LF on every platform.
+.agents/skills/dcp-software-assembly-generator/assets/package-private-paths.json text eol=lf

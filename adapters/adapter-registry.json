@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 4,
+  "revision": 9,
   "adapters": [
     {
       "id": "unfurl://component/kotak-neo-adapter",
@@ -120,7 +120,7 @@
         },
         {
           "path": "codex-core/src/main/resources/dcp/schemas/development.task.answer.output.json",
-          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "sha256": "b11b865f3439657426fa3636a090104942804328e98e2ed5d8190a56928077ab",
           "kind": "operation-schema"
         },
         {
@@ -130,7 +130,7 @@
         },
         {
           "path": "codex-core/src/main/resources/dcp/schemas/development.task.cancel.output.json",
-          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "sha256": "b11b865f3439657426fa3636a090104942804328e98e2ed5d8190a56928077ab",
           "kind": "operation-schema"
         },
         {
@@ -140,7 +140,7 @@
         },
         {
           "path": "codex-core/src/main/resources/dcp/schemas/development.task.reconcile.output.json",
-          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "sha256": "b11b865f3439657426fa3636a090104942804328e98e2ed5d8190a56928077ab",
           "kind": "operation-schema"
         },
         {
@@ -150,7 +150,7 @@
         },
         {
           "path": "codex-core/src/main/resources/dcp/schemas/development.task.result.output.json",
-          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "sha256": "b11b865f3439657426fa3636a090104942804328e98e2ed5d8190a56928077ab",
           "kind": "operation-schema"
         },
         {
@@ -160,7 +160,7 @@
         },
         {
           "path": "codex-core/src/main/resources/dcp/schemas/development.task.status.output.json",
-          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "sha256": "b11b865f3439657426fa3636a090104942804328e98e2ed5d8190a56928077ab",
           "kind": "operation-schema"
         },
         {
@@ -170,7 +170,7 @@
         },
         {
           "path": "codex-core/src/main/resources/dcp/schemas/development.task.submit.output.json",
-          "sha256": "e0e019de3dccc2afa0105c35db0514eb200fd6467415d9e064ccb94acfabfdac",
+          "sha256": "b11b865f3439657426fa3636a090104942804328e98e2ed5d8190a56928077ab",
           "kind": "operation-schema"
         }
       ],
@@ -221,7 +221,7 @@
           "command": "mvn -B -o install with codex.binary, codex.schemas and docker.binary; 26 tests passed on 2026-10-23",
           "report": {
             "path": "docs/EVIDENCE-codex-adapter.md",
-            "sha256": "0477435de8d4d729dd7aa184233298f1094b74fbfe58d0a7b2e75d2229c1a170",
+            "sha256": "ad72247c7ac3de70e325d52f2219507a7d15d9dfd513b1f633f23953ac5ab70c",
             "kind": "recorded-evidence"
           }
         },
@@ -231,7 +231,7 @@
           "command": "scripts/Test-CodexProtocol.ps1; installed Codex initialization and skill discovery only, no model turn",
           "report": {
             "path": "docs/EVIDENCE-codex-adapter.md",
-            "sha256": "0477435de8d4d729dd7aa184233298f1094b74fbfe58d0a7b2e75d2229c1a170",
+            "sha256": "ad72247c7ac3de70e325d52f2219507a7d15d9dfd513b1f633f23953ac5ab70c",
             "kind": "recorded-evidence"
           }
         },
@@ -241,7 +241,7 @@
           "command": "mvn -B -o -pl codex-stdio -am -Ddocker.binary=<installed-docker> verify; controlled provider container isolation and teardown",
           "report": {
             "path": "docs/EVIDENCE-codex-adapter.md",
-            "sha256": "0477435de8d4d729dd7aa184233298f1094b74fbfe58d0a7b2e75d2229c1a170",
+            "sha256": "ad72247c7ac3de70e325d52f2219507a7d15d9dfd513b1f633f23953ac5ab70c",
             "kind": "recorded-evidence"
           }
         }
@@ -268,12 +268,12 @@
       },
       "claim": {
         "path": "src/main/resources/dcp/software-package/claim.json",
-        "sha256": "eeff6659fae892cb8550f51e55be490995aea338db514edb0292ab7b3af264f3",
+        "sha256": "d5d6349def4a453149ec7e31cd2ee6ef4a985cec1ef667c843614eadfad41c79",
         "kind": "claim"
       },
       "catalog": {
         "path": "src/main/resources/META-INF/unfurl-package-catalog.yaml",
-        "sha256": "150f866db54f2fe593ca605d59930fe2654821109c8f7406d54acd9a71262fd7",
+        "sha256": "e38b133b9e7593b32c138a998a6d8044dfe2bd346cace8f869f36c6be17dcb63",
         "kind": "catalog"
       },
       "artifacts": [
@@ -346,6 +346,11 @@
           "path": "src/main/resources/dcp/software-package/schemas/software.package.status.output.json",
           "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
           "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/private-paths.json",
+          "sha256": "a64678d388812c31545cdbb78c9eb757616f9610c5e911b709ab77dd34f695da",
+          "kind": "package-path-policy"
         }
       ],
       "capabilities": [
@@ -399,10 +404,10 @@
         {
           "level": "local",
           "outcome": "pass",
-          "command": "mvn -B -o verify in unfurl-flow; 215 tests passed on 2026-10-24",
+          "command": "mvn -B -o verify in unfurl-flow; 228 tests passed on 2026-10-24",
           "report": {
             "path": "docs/EVIDENCE-software-package-coordinator.md",
-            "sha256": "4e88129738ec1062dca647f8ff8440df47f0a0d40bc9867426c2cca1984afded",
+            "sha256": "e86ed0b2d62ec959db518c988695a3c35ba3d44fd5a16d27574bdf798aa334f3",
             "kind": "recorded-evidence"
           }
         },
@@ -412,7 +417,7 @@
           "command": "PackageInvocableFactoryTest: canonical claims/bindings, ephemeral RSA-signed broker admission, retained-handle revocation and resource projection",
           "report": {
             "path": "docs/EVIDENCE-software-package-coordinator.md",
-            "sha256": "4e88129738ec1062dca647f8ff8440df47f0a0d40bc9867426c2cca1984afded",
+            "sha256": "e86ed0b2d62ec959db518c988695a3c35ba3d44fd5a16d27574bdf798aa334f3",
             "kind": "recorded-evidence"
           }
         }

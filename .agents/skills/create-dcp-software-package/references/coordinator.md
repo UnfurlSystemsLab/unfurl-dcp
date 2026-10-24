@@ -11,7 +11,7 @@ route is installed. The host exposes accepted capabilities through its selected 
 | `software.package.status` | runId | Compact current progress and sanitized pending interaction |
 | `software.package.advance` | runId, expectedRevision | Observe or advance at most one native stage |
 | `software.package.answer` | runId, expectedRevision, requestId, answer | Authenticated exact request decision, once only |
-| `software.package.resume` | runId, expectedRevision, optional executionId | Revalidate pins/reconcile an existing execution; never replay |
+| `software.package.resume` | runId, expectedRevision, optional executionId | Revalidate pins and reconcile; a lost start restarts only if Flow's store proves it never ran, adopts a single matching execution, or needs an explicit executionId; never replay |
 | `software.package.cancel` | runId, expectedRevision | Stop dispatch and contain child effects |
 | `software.package.result` | runId | Final declared archive/manifest and readiness evidence |
 
@@ -21,11 +21,18 @@ quotas and child containment. Foundry and development-task operations remain sep
 capabilities. The selected graph/UI is project state, not fixed by this facade. Native validators
 and actual services decide executable support; do not invent tool names, endpoints or bindings.
 
+Failures return a stable code with a fixed message; the provider claim declares the full list. On
+`PACKAGE_STALE_REVISION` read status and retry with the current revision; reconciliation codes need
+`resume`; `PACKAGE_NOT_FOUND` also covers runs the caller does not own; `PACKAGE_OPERATION_FAILED`
+needs an operator. A run whose stage definitively failed ends as `failed` once the host proves its
+child work is contained.
+
 Canonical authoring envelopes live beside the assembly suite's existing schemas:
 `package-run.schema.json`, `package-interaction.schema.json`, `package-result.schema.json` and
 `package-manifest.schema.json`. The existing CLI validates them offline. These records contain
 references, never raw provider captures, credentials or transcripts. Runtime journal files stay
-private and are not packaging inputs.
+private and are not packaging inputs. Private names come from the suite's canonical
+`package-private-paths.json`, which Flow's packager uses byte-for-byte.
 
 Stage results reuse existing assembly-progress, adapter-result and graph-result payloads. The
 host verifier applies `suite.py validate KIND FILE --artifacts` and applicable native/project checks,

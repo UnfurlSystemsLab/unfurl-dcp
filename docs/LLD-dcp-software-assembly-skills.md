@@ -225,6 +225,12 @@ escapes. Reject traversal, unapproved absolute roots, duplicate archive paths an
 without explicit authorization. Treat names as data; never interpolate them into shell commands.
 Exclude raw captures, credentials, journals and transcripts from distributable archives by default;
 package only declared artifacts. Pin the final manifest and archive digest after validation.
+The private names (path segments, segment prefixes, file names, suffixes and artifact kinds) are
+defined once in `assets/package-private-paths.json`. Flow's packager ships a byte-identical copy
+(`dcp/software-package/private-paths.json`) and the suite's package-manifest check loads the same
+file. The registry pins Flow's copy as a `package-path-policy` artifact; registry validation
+rejects a pin whose digest differs from the canonical asset and requires the package coordinator
+entry to pin exactly one, so the Java and Python rules cannot drift.
 
 ### State, interactions and recovery
 

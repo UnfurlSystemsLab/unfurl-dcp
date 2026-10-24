@@ -279,8 +279,8 @@ inbox. A host-scheduled, authorized poll of saved execution IDs re-reads status;
 wait persistence cannot be lost because a later poll observes both. Use node-specific correlation
 because Flow can resume multiple nodes sharing a correlation ID. A mandatory dependent result
 node re-fetches independently validated artifacts. The wait only observes a terminal task; the
-result gate fails failed/cancelled/unknown tasks, and Flow validates that downstream branches cannot
-bypass it. On startup reload pinned definitions and accepted registrations before polling. Push
+result gate fails failed/cancelled tasks, and Flow validates that downstream branches cannot bypass
+it. An OUTCOME_UNKNOWN task keeps the wait open until the provider's reconcile resolves it. On startup reload pinned definitions and accepted registrations before polling. Push
 events/outbox redelivery can be a later independently validated binding over the same contract.
 
 Foundry can expose the same submit/status/answer/cancel operations through a scoped tool projection.
