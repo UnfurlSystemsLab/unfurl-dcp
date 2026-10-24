@@ -24,6 +24,10 @@ ASSETS = SKILL / "assets"
 GOVERNANCE = {"authentication", "authorization", "secrets", "policy", "approvals",
               "audit", "monitoring", "quotas", "costs"}
 COMPLETE = {"validated", "runnable"}
+PRIVATE_PATH_POLICY = ASSETS / "package-private-paths.json"
+POLICY_KIND = "package-path-policy"
+PACKAGE_PROVIDER = "urn:unfurl:flow:software-package-coordinator"
+POLICY_RULES = ("deniedSegments", "deniedSegmentPrefixes", "deniedFileNames", "deniedSuffixes", "deniedArtifactKinds")
 
 
 def load(path: Path):
@@ -54,6 +58,26 @@ def require(condition, message):
     """Guard: raise a user-facing validation error when an invariant is violated."""
     if not condition:
         raise ValueError(message)
+
+
+def private_path_policy():
+    """Repository: load the canonical private-path policy that Flow's packager ships byte-for-byte; malformed policy fails closed."""
+    policy = load(PRIVATE_PATH_POLICY)
+    require(isinstance(policy, dict) and set(policy) == {"schemaVersion", "description", *POLICY_RULES}
+            and policy["schemaVersion"] == 1, "private-path policy is malformed")
+    for name in POLICY_RULES:
+        values = policy[name]
+        require(isinstance(values, list) and values and all(isinstance(value, str) and value and value == value.lower()
+                                                            for value in values), "private-path policy is malformed")
+    return policy
+
+
+def private_part(part: str, policy) -> bool:
+    """Specification: one path component names private material. Mirrors Flow's PackageArchive (lower-case comparison)."""
+    lower = part.lower()
+    return (lower in policy["deniedSegments"] or lower in policy["deniedFileNames"]
+            or any(lower.startswith(prefix) for prefix in policy["deniedSegmentPrefixes"])
+            or any(lower.endswith(suffix) for suffix in policy["deniedSuffixes"]))
 
 
 def digest(path: Path):
@@ -198,6 +222,16 @@ def validate_connections(connections, complete=False):
             require(item["status"] == "verified", "execution-ready result has an unverified connection")
 
 
+def validate_policy_pins(entry):
+    """Drift Guard: a pinned private-path policy must be the canonical bytes; the package coordinator must pin exactly one."""
+    pins = [artifact for artifact in entry.get("artifacts", []) if artifact["kind"] == POLICY_KIND]
+    if entry["id"] == PACKAGE_PROVIDER:
+        require(len(pins) == 1, "package coordinator must pin exactly one private-path policy")
+    canonical = digest(PRIVATE_PATH_POLICY)
+    for pin in pins:
+        require(pin["sha256"] == canonical, "pinned private-path policy differs from the canonical policy")
+
+
 def verify_entry(entry, registry_dir: Path):
     """Adapter Validator: cross-check indexed offers against pinned claim/catalog/schema bytes."""
     source = (registry_dir / entry["source"]["path"]).resolve()
@@ -255,11 +289,13 @@ def validate(kind: str, document, base: Path, artifacts=False):
                 require(not document["unresolvedNeeds"], "package readiness has unresolved needs")
             if kind == "package-manifest":
                 unique([a["path"].casefold() for a in document["artifacts"]], "package artifact path")
+                policy = private_path_policy()
                 for artifact in document["artifacts"]:
-                    parts = artifact["path"].casefold().split("/")
-                    require(not set(parts) & {".package", ".git", ".codex", "captures", "transcripts", "journals", "secrets", "credentials"}, "private package artifact path")
-                    require(all(not part.startswith(".env") and part != "auth.json" and not part.endswith((".pem", ".key", ".", " ")) for part in parts), "private package artifact path")
-                    require(artifact["kind"].casefold() not in {"capture", "raw-capture", "credentials", "secret", "transcript", "journal", "task-journal", "provider-capture"}, "private package artifact kind")
+                    parts = artifact["path"].split("/")
+                    # Path syntax stays here; which names are private comes from the shared canonical policy.
+                    require(all(not part.endswith((".", " ")) for part in parts), "private package artifact path")
+                    require(not any(private_part(part, policy) for part in parts), "private package artifact path")
+                    require(artifact["kind"].lower() not in policy["deniedArtifactKinds"], "private package artifact kind")
             if document.get("state") in {"waiting-for-input", "waiting-for-approval"}:
                 expected = "approval" if document["state"] == "waiting-for-approval" else "question"
                 require(document["interaction"]["kind"] == expected, "interaction kind differs from run state")
@@ -283,6 +319,7 @@ def validate(kind: str, document, base: Path, artifacts=False):
                     "source path must be relative to the registry directory")
             for artifact in artifact_refs(entry):
                 confined(base, artifact["path"])
+            validate_policy_pins(entry)
             if artifacts:
                 verify_entry(entry, base)
         return

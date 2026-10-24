@@ -416,6 +416,24 @@ class SuiteTests(unittest.TestCase):
         self.assertFalse(stale.exists())
         self.assertEqual("keep", unrelated.read_text())
 
+    def test_registry_policy_pin_must_match_the_canonical_policy(self):
+        """The package coordinator pins exactly one private-path policy, and only the canonical bytes are accepted."""
+        canonical = suite.digest(suite.PRIVATE_PATH_POLICY)
+        pin = {"path": "src/main/resources/dcp/software-package/private-paths.json", "sha256": canonical, "kind": suite.POLICY_KIND}
+        entry = {"id": suite.PACKAGE_PROVIDER, "artifacts": [pin]}
+        suite.validate_policy_pins(entry)
+        with self.assertRaisesRegex(ValueError, "differs from the canonical policy"):
+            suite.validate_policy_pins({**entry, "artifacts": [{**pin, "sha256": "0" * 64}]})
+        with self.assertRaisesRegex(ValueError, "must pin exactly one"):
+            suite.validate_policy_pins({**entry, "artifacts": []})
+        suite.validate_policy_pins({"id": "urn:other:adapter", "artifacts": []})
+
+    def test_checked_in_registry_pins_the_canonical_policy(self):
+        """The real registry entry for the Flow coordinator carries the canonical policy pin."""
+        registry = suite.load(suite.canonical_root() / "adapters/adapter-registry.json")
+        entry = next(item for item in registry["adapters"] if item["id"] == suite.PACKAGE_PROVIDER)
+        suite.validate_policy_pins(entry)
+
 
 if __name__ == "__main__":
     unittest.main()

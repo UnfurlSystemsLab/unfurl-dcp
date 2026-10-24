@@ -1,8 +1,11 @@
 """Package-envelope and handoff scenarios use real canonical validators with synthetic project evidence."""
 
+from contextlib import redirect_stderr
+import io
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import suite
@@ -88,6 +91,30 @@ class PackageTests(unittest.TestCase):
             suite.validate("package-interaction", {**request, "accessToken": "forbidden"}, self.root)
         with self.assertRaises(ValidationError):
             suite.validate("package-interaction", {**request, "intentDigest": ""}, self.root)
+
+    def test_policy_drives_private_paths_and_kinds(self):
+        """The canonical policy rejects private names case-insensitively and allows ordinary artifacts (parity with Flow)."""
+        policy = suite.private_path_policy()
+        for denied in ("captures", ".git", ".ENV.local", "AUTH.JSON", "server.pem", "signing.key", "Transcripts"):
+            self.assertTrue(suite.private_part(denied, policy), denied)
+        for allowed in ("src", "README.md", "environment.txt", "keys.txt"):
+            self.assertFalse(suite.private_part(allowed, policy), allowed)
+        self.assertIn("task-journal", policy["deniedArtifactKinds"])
+
+    def test_cli_reports_sanitized_failures_for_malformed_handoffs(self):
+        """Wrong-typed or schema-invalid handoffs exit nonzero with the error type only, never a traceback."""
+        for name, content in (("wrong-type.json", "[]"), ("schema-invalid.json", '{"projectId": 7}')):
+            path = self.root / name
+            path.write_text(content, encoding="utf-8")
+            stderr = io.StringIO()
+            argv = ["package_handoff.py", "assembly-progress", str(path), "--workspace", str(self.root),
+                    "--project-id", "fixture-project"]
+            with mock.patch.object(sys, "argv", argv), redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exited:
+                    package_handoff.main()
+            self.assertEqual(1, exited.exception.code)
+            self.assertRegex(stderr.getvalue(), r"^Handoff verification failed: \w+\n$")
+            self.assertNotIn("Traceback", stderr.getvalue())
 
 
 if __name__ == "__main__":
