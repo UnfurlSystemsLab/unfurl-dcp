@@ -12,7 +12,7 @@ and generates selected Flow/Foundry graphs and UI. The shared
 [adapter registry](adapters/adapter-registry.json) indexes inspected adapters by domain; it
 does not grant authority or replace Fabric admission.
 
-Install the four canonical Codex skills explicitly:
+Install the five canonical Codex skills explicitly:
 
 ```text
 python -m pip install -r .agents/skills/dcp-software-assembly-generator/scripts/requirements.txt
@@ -20,6 +20,9 @@ python .agents/skills/dcp-software-assembly-generator/scripts/suite.py install
 ```
 
 Then invoke `$dcp-software-assembly-generator` and describe the component and first user flow.
+For a configured host-managed pipeline, invoke `$create-dcp-software-package`; it routes progress,
+questions and exact decisions through Flow's accepted package operations and returns pinned artifacts.
+The facade requires actual host bindings and does not activate server-side execution by installation.
 Installation refuses differing local files; inspect changes before intentionally synchronizing
 with `--replace-local`. See [handoff and utility instructions](.agents/skills/dcp-software-assembly-generator/references/handoffs.md)
 and [implementation contracts](docs/LLD-dcp-software-assembly-skills.md) for validation and resumption.

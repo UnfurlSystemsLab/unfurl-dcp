@@ -2,7 +2,14 @@
 
 ## Layout and dependencies
 
-Four sibling skill folders live in `.agents/skills`. Shared handoff schemas and CLI live in
+Coordinator implementation revision, 24 October 2026: add the fifth canonical skill
+`create-dcp-software-package`, coordinator run/interaction/result schemas and explicit installer
+support. Executable sequencing lives in Flow's host-bound package coordinator; canonical suite
+payloads remain version 1. The new schemas are separate authoring envelopes, not DCP core fields.
+See [Flow coordinator LLD](../../unfurl-flow/docs/LLD-software-package-coordinator.md) for concrete
+operations, single-writer recovery, stage context/verification ports and packaging behavior.
+
+Five sibling skill folders live in `.agents/skills`. Shared handoff schemas and CLI live in
 `dcp-software-assembly-generator/assets` and `scripts/suite.py`. Sibling relative references
 work in the repository and after installation. The registry and its schema live in `adapters/`.
 Python 3.11+, PyYAML and jsonschema are development-only dependencies in `requirements.txt`
@@ -62,7 +69,7 @@ Run `python <skill>/scripts/suite.py --help` for exact arguments.
   requested-operation and runtime consistency checks before the coordinator merges child outputs.
 - `upsert REGISTRY ENTRY`: verifies an entry, replaces only the same identity/version or appends,
   increments revision, validates the resulting registry and atomically writes it. No live calls.
-- `install --destination DIR [--replace-local]`: synchronizes only the four suite skills.
+- `install --destination DIR [--replace-local]`: synchronizes only the five suite skills.
   Default refuses divergent destination files. Explicit replacement overwrites suite-owned files;
   unrelated files are preserved. A per-skill source marker locates the canonical checkout/index
   and tracks managed file hashes so later sync removes only stale managed files.
@@ -137,12 +144,13 @@ checks the inspected Kotak checkout when locally available. Fixture tests do not
 autonomous interview quality, product graph validity or live API certification; validate those
 through real projects and native tools before making those claims.
 
-## Isolated package coordinator (proposed contract, 22 October 2026)
+## Isolated package coordinator (host-bound contract, 24 October 2026)
 
-This section specifies new work, not an implemented endpoint or schema extension. Existing
-version-1 handoff schemas and the four-skill installer remain unchanged. Introduce the facade,
-run/question/result schemas and installation support together during implementation; do not put
-these proposed fields into existing closed schemas without a versioned compatibility decision.
+The host-bound Flow implementation and fifth facade skill implement the coordination boundary.
+Existing version-1 specialist handoffs remain unchanged; separate package-run, package-interaction,
+package-result and package-manifest schemas describe parent-facing records. No public HTTP endpoint
+or automatic deployment/profile activation is implied. Canonical handoff verification also has a
+read-only `scripts/package_handoff.py` adapter; independent native/build/startup checks remain required.
 
 ### Admission and execution ports
 
@@ -152,7 +160,7 @@ durable controls and explicit Flow task-wait integration. Activation still requi
 host authorization, sandbox, credentials and verification bindings. No generic DCP response is assumed
 to suspend a Flow node automatically.
 
-Expose skill `create-dcp-software-package` and proposed operation `create_dcp_software_package`
+Expose skill `create-dcp-software-package` and operation `create_dcp_software_package`
 through a provider-owned DCP claim, operation schemas, accepted contract and runtime binding.
 The operation accepts package name, permitted target-directory reference and optional saved-run
 reference. Trusted tenant/principal, workspace roots, budgets and grants come from the host,
@@ -166,12 +174,12 @@ Foundry invokes pinned specialist agents using existing governed execution seams
 real composition. A Foundry agent definition cannot execute a Codex SKILL.md as code. The explicit
 development runner supplies that bridge with scoped filesystem/process/network access. The local
 `unfurl-adapter-codex` implementation supplies this execution boundary; the package coordinator and
-its stage bindings remain proposed. Without those bindings, a local Codex handoff remains a manual
+its deployment-specific stage bindings remain host-owned. Without those bindings, a local Codex handoff remains a manual
 wait and must not be reported as autonomous pipeline completion.
 
 ### Workspace and handoff protocol
 
-The proposed stage handoff keeps code and evidence in the workspace while returning only pinned
+The stage handoff keeps code and evidence in the workspace while returning only pinned
 references to the coordinator. The same checks apply to adapter, governance and graph stages.
 
 ```mermaid

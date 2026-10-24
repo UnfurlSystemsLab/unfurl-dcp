@@ -10,7 +10,7 @@ import suite
 
 
 def check():
-    """Validator: verify all four canonical skills and the index without requiring sibling checkouts."""
+    """Validator: verify canonical skills and the index without requiring sibling checkouts."""
     root = suite.canonical_root()
     for name in suite.SKILLS:
         folder = root / ".agents/skills" / name
@@ -34,7 +34,7 @@ def check():
     path = root / "adapters/adapter-registry.json"
     suite.validate("registry", suite.load(path), path.parent)
     Draft202012Validator(schemas["call-manifest"]).validate(suite.load(suite.ASSETS / "api-calls.json"))
-    print(f"Four skills, metadata, local links, {len(schemas)} schemas, call manifest and registry structure valid")
+    print(f"{len(suite.SKILLS)} skills, metadata, local links, {len(schemas)} schemas, call manifest and registry structure valid")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,10 @@ description: Interview users and build runnable software assemblies from Domain 
 Coordinate the complete software-building journey. DCP declares capabilities and governance;
 Fabric composes them; product runtimes execute accepted bindings. Do not become a parallel compiler.
 
+For a configured host-managed pipeline, use the single-entry
+[create-dcp-software-package facade](../create-dcp-software-package/SKILL.md). Its Flow coordinator
+handles durable isolated stages; this workflow remains the reusable interview/assembly specialist.
+
 ## Execute APIs with hooks
 
 Read [api-execution.md](references/api-execution.md) when calling Fabric/Flow APIs. Use the

@@ -18,7 +18,7 @@ from referencing import Registry, Resource
 import yaml
 
 SKILLS = ("add-dcp-capability", "dcp-component-adapter-creator",
-          "dcp-software-assembly-generator", "dcp-runtime-graph-generator")
+          "dcp-software-assembly-generator", "dcp-runtime-graph-generator", "create-dcp-software-package")
 SKILL = Path(__file__).resolve().parents[1]
 ASSETS = SKILL / "assets"
 GOVERNANCE = {"authentication", "authorization", "secrets", "policy", "approvals",
@@ -249,6 +249,25 @@ def validate(kind: str, document, base: Path, artifacts=False):
     """Validation Facade: apply closed schemas, semantic invariants and optional byte verification."""
     schemas, registry = schema_environment()
     Draft202012Validator(schemas[kind], registry=registry, format_checker=FormatChecker()).validate(document)
+    if kind.startswith("package-"):
+        if kind != "package-interaction":
+            if document["readiness"] in COMPLETE:
+                require(not document["unresolvedNeeds"], "package readiness has unresolved needs")
+            if kind == "package-manifest":
+                unique([a["path"].casefold() for a in document["artifacts"]], "package artifact path")
+                for artifact in document["artifacts"]:
+                    parts = artifact["path"].casefold().split("/")
+                    require(not set(parts) & {".package", ".git", ".codex", "captures", "transcripts", "journals", "secrets", "credentials"}, "private package artifact path")
+                    require(all(not part.startswith(".env") and part != "auth.json" and not part.endswith((".pem", ".key", ".", " ")) for part in parts), "private package artifact path")
+                    require(artifact["kind"].casefold() not in {"capture", "raw-capture", "credentials", "secret", "transcript", "journal", "task-journal", "provider-capture"}, "private package artifact kind")
+            if document.get("state") in {"waiting-for-input", "waiting-for-approval"}:
+                expected = "approval" if document["state"] == "waiting-for-approval" else "question"
+                require(document["interaction"]["kind"] == expected, "interaction kind differs from run state")
+            for artifact in artifact_refs(document):
+                confined(base, artifact["path"])
+                if artifacts:
+                    verify_artifact(base, artifact)
+        return
     if kind in {"call-manifest", "call-profile"}:
         if kind == "call-manifest":
             for operation in document["operations"].values():
@@ -447,7 +466,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     validator = commands.add_parser("validate")
-    validator.add_argument("kind", choices=("registry", "assembly-progress", "adapter-result", "graph-result", "call-manifest", "call-profile"))
+    validator.add_argument("kind", choices=("registry", "assembly-progress", "adapter-result", "graph-result", "call-manifest", "call-profile", "package-run", "package-interaction", "package-result", "package-manifest"))
     validator.add_argument("file", type=Path)
     validator.add_argument("--artifacts", action="store_true")
     search = commands.add_parser("query")
