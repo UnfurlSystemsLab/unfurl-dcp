@@ -64,13 +64,14 @@ Its ownership and implementation contracts are defined in
 [`LLD-dcp-software-assembly-skills.md`](LLD-dcp-software-assembly-skills.md).
 Keep skill tooling dependencies outside Maven and production DCP packages.
 
-The proposed single-entry Agent-as-a-Tool coordinator is specified in those suite designs.
+The host-bound single-entry Agent-as-a-Tool coordinator is specified in those suite designs.
 Its facade and authoring contracts may be maintained here as development artifacts; executable
 orchestration belongs to Flow, agent execution to Foundry, composition to Fabric, and scoped
 code-authoring execution to a host-bound development runner. Express cross-repo seams as DCP
 claims/ports and bindings first. Do not add an agent scheduler, model SDK, UI conversation store
 or concrete workspace/identity service to the production DCP library. Existing skill handoffs
-do not constitute implemented isolated sub-agent execution.
+do not constitute configured server-side isolated sub-agent execution. Flow's package coordinator
+now supplies the deterministic host boundary; actual stage workflows and governance ports must be bound.
 
 The canonical `AGENTS.md` template for DCP adapter and substrate-component authors lives at:
 

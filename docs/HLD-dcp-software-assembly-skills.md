@@ -13,12 +13,13 @@ Canonical skills live in `.agents/skills`. `dcp-software-assembly-generator` coo
 `dcp-component-adapter-creator` builds business or governance adapters; `add-dcp-capability`
 owns protocol authoring rules; `dcp-runtime-graph-generator` projects capability needs and accepted bindings
 into native runtime definitions. The target user-facing facade is `create-dcp-software-package`,
-with a proposed callable DCP operation `create_dcp_software_package`. The existing four skills
-remain reusable specialist workflows. Today their calls are ordinary skill handoffs within the
-current Codex task; an isolated coordinator and facade are not yet implemented. A skill file
-alone cannot launch agents, enforce isolation or install a callable tool.
+with callable DCP operation `create_dcp_software_package`. The existing four skills remain reusable
+specialist workflows. The fifth facade and host-bound Flow coordinator are locally implemented;
+deployments still require accepted stage workflows and the documented host bindings. Ordinary local
+skill handoffs remain available when that host is not configured. A skill file alone cannot launch
+agents, enforce isolation or install a callable tool.
 
-## Agent-as-a-Tool orchestration (target design, 22 October 2026)
+## Agent-as-a-Tool orchestration (host-bound implementation, 24 October 2026)
 
 The Facade and Agent-as-a-Tool patterns expose one package-building interaction while separating
 specialist contexts. Flow owns durable sequencing, checkpoints, waits and cancellation; Foundry
@@ -36,7 +37,7 @@ flowchart TD
         Parent --> Facade
         Result --> Parent
     end
-    subgraph AuthoringHost["Proposed host-managed pipeline"]
+    subgraph AuthoringHost["Host-managed pipeline"]
         Flow["Flow coordinator: checkpoints and waits"]
         Interview["Foundry context: interview and gap analysis"]
         Governance["Foundry context: governance options"]
@@ -65,9 +66,10 @@ flowchart TD
     Parent -->|"Authenticated answers and approvals"| Flow
 ```
 
-This is the target ownership/context view. Each specialist receives scoped inputs and grants;
-the host enforces isolation. The workspace is data exchange, not an authority source. Existing
-guarded API utilities are building blocks; the coordinator and facade above remain proposed.
+This is the ownership/context view. Each specialist receives scoped inputs and grants; the host
+enforces isolation. The workspace is data exchange, not an authority source. See the
+[Flow coordinator HLD](../../unfurl-flow/docs/HLD-software-package-coordinator.md) for implemented
+state, host ports and activation boundaries. This does not claim a deployed authoring service.
 
 Stages are interview/discovery, missing-adapter implementation, governance resolution, composition,
 selected graph/UI generation, validation and packaging. Reuse existing capabilities before creating
@@ -178,7 +180,8 @@ The outbound [Codex development-task adapter](DESIGN-codex-development-task-adap
 provides a locally implemented host-bound A06 executor, separate from the inbound client gateway.
 Its provider artifacts and Flow wait/result integration do not constitute a deployed coding
 service. Activation still requires host isolation, authentication, decision authority, independent
-verification and the real-provider acceptance gate. The complete package coordinator remains proposed.
+verification and the real-provider acceptance gate. The package coordinator is a host-bound Flow
+implementation; it does not install those production services or certify live coding automatically.
 
 Native Flow/Foundry validators remain authoritative. Flow owns deterministic orchestration;
 Foundry owns agent decisions and canonical inspectable agent graphs. Combined graphs use

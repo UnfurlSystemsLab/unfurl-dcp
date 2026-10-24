@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 3,
+  "revision": 4,
   "adapters": [
     {
       "id": "unfurl://component/kotak-neo-adapter",
@@ -252,6 +252,176 @@
         "Native Codex validation covers initialization and skill discovery only. Coding and Docker tests use controlled providers; real model coding and production account access remain unverified.",
         "Flow waits require the matching Flow implementation; full software-package coordinator remains separate work.",
         "Single-owner file store; distributed task storage is not implemented."
+      ]
+    },
+    {
+      "id": "urn:unfurl:flow:software-package-coordinator",
+      "version": "0.1.0",
+      "domains": [
+        "software-development",
+        "authoring",
+        "orchestration"
+      ],
+      "source": {
+        "repository": "https://github.com/UnfurlSystemsLab/unfurl-flow",
+        "path": "../../unfurl-flow"
+      },
+      "claim": {
+        "path": "src/main/resources/dcp/software-package/claim.json",
+        "sha256": "eeff6659fae892cb8550f51e55be490995aea338db514edb0292ab7b3af264f3",
+        "kind": "claim"
+      },
+      "catalog": {
+        "path": "src/main/resources/META-INF/unfurl-package-catalog.yaml",
+        "sha256": "150f866db54f2fe593ca605d59930fe2654821109c8f7406d54acd9a71262fd7",
+        "kind": "catalog"
+      },
+      "artifacts": [
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/create_dcp_software_package.input.json",
+          "sha256": "f79517842442178b958dba724cf74d36e009c55c36c3160610577c3e205b570c",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/create_dcp_software_package.output.json",
+          "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.advance.input.json",
+          "sha256": "e8f5e291119dd4e302a0c8092dc4be269649edd402d6bdb8854fbfbe4f379962",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.advance.output.json",
+          "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.answer.input.json",
+          "sha256": "7cbe80ac562d58c46b3b7de611f6dc3065e069c73d929b4183434978d299bb7e",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.answer.output.json",
+          "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.cancel.input.json",
+          "sha256": "e8f5e291119dd4e302a0c8092dc4be269649edd402d6bdb8854fbfbe4f379962",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.cancel.output.json",
+          "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.result.input.json",
+          "sha256": "594343a9d35944f19b381b4ab22c907a2cf2d3628cae42782f11ce2d5e4bd36e",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.result.output.json",
+          "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.resume.input.json",
+          "sha256": "400e277a4f1659a813614a498bf9d5a6366ee707901f5d8a58b27f60a4837b6f",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.resume.output.json",
+          "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.status.input.json",
+          "sha256": "594343a9d35944f19b381b4ab22c907a2cf2d3628cae42782f11ce2d5e4bd36e",
+          "kind": "operation-schema"
+        },
+        {
+          "path": "src/main/resources/dcp/software-package/schemas/software.package.status.output.json",
+          "sha256": "ceb35c281950d8ba7dcf41bfe2bbfa6b8ee9631fb1a28acfc10aebb3e993aab5",
+          "kind": "operation-schema"
+        }
+      ],
+      "capabilities": [
+        {
+          "name": "create_dcp_software_package",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Current accepted contract/runtime authority, original and current caller grants, pinned host plan and stage profile; exact authenticated intent/expiry for interaction decisions.",
+          "reconciliationPolicy": "Persist control/start intent before dispatch. Lost receipts require observing/adopting the existing pinned native execution; never replay unknown starts or answers. Cancellation requires child containment."
+        },
+        {
+          "name": "software.package.advance",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Current accepted contract/runtime authority, original and current caller grants, pinned host plan and stage profile; exact authenticated intent/expiry for interaction decisions.",
+          "reconciliationPolicy": "Persist control/start intent before dispatch. Lost receipts require observing/adopting the existing pinned native execution; never replay unknown starts or answers. Cancellation requires child containment."
+        },
+        {
+          "name": "software.package.answer",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Current accepted contract/runtime authority, original and current caller grants, pinned host plan and stage profile; exact authenticated intent/expiry for interaction decisions.",
+          "reconciliationPolicy": "Persist control/start intent before dispatch. Lost receipts require observing/adopting the existing pinned native execution; never replay unknown starts or answers. Cancellation requires child containment."
+        },
+        {
+          "name": "software.package.cancel",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Current accepted contract/runtime authority, original and current caller grants, pinned host plan and stage profile; exact authenticated intent/expiry for interaction decisions.",
+          "reconciliationPolicy": "Persist control/start intent before dispatch. Lost receipts require observing/adopting the existing pinned native execution; never replay unknown starts or answers. Cancellation requires child containment."
+        },
+        {
+          "name": "software.package.result",
+          "version": "0.1.0",
+          "effect": "read"
+        },
+        {
+          "name": "software.package.resume",
+          "version": "0.1.0",
+          "effect": "write",
+          "approvalPolicy": "Current accepted contract/runtime authority, original and current caller grants, pinned host plan and stage profile; exact authenticated intent/expiry for interaction decisions.",
+          "reconciliationPolicy": "Persist control/start intent before dispatch. Lost receipts require observing/adopting the existing pinned native execution; never replay unknown starts or answers. Cancellation requires child containment."
+        },
+        {
+          "name": "software.package.status",
+          "version": "0.1.0",
+          "effect": "read"
+        }
+      ],
+      "validation": [
+        {
+          "level": "local",
+          "outcome": "pass",
+          "command": "mvn -B -o verify in unfurl-flow; 215 tests passed on 2026-10-24",
+          "report": {
+            "path": "docs/EVIDENCE-software-package-coordinator.md",
+            "sha256": "4e88129738ec1062dca647f8ff8440df47f0a0d40bc9867426c2cca1984afded",
+            "kind": "recorded-evidence"
+          }
+        },
+        {
+          "level": "protocol",
+          "outcome": "pass",
+          "command": "PackageInvocableFactoryTest: canonical claims/bindings, ephemeral RSA-signed broker admission, retained-handle revocation and resource projection",
+          "report": {
+            "path": "docs/EVIDENCE-software-package-coordinator.md",
+            "sha256": "4e88129738ec1062dca647f8ff8440df47f0a0d40bc9867426c2cca1984afded",
+            "kind": "recorded-evidence"
+          }
+        }
+      ],
+      "limitations": [
+        "Optional host-bound provider in the local Flow implementation; not automatically activated or exposed by the default server.",
+        "Mandatory actual host authorization, quota reservations, workspace fencing, exact decision authority, independent validation, audit and child containment services must be bound.",
+        "Actual admitted Foundry profiles/native stage definitions, Fabric composition and Codex credentials/execution remain deployment prerequisites; controlled fixture tests are not live-service certification.",
+        "Single-owner journal; distributed run storage is not implemented."
       ]
     }
   ]

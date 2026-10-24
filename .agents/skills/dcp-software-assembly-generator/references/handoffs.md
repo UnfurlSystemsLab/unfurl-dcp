@@ -32,7 +32,7 @@ python suite.py install --destination <codex-home>/skills
 ```
 
 `install` refuses divergent files by default; use `--replace-local` only when intentionally
-synchronizing known local suite changes. It installs all four sibling skills and records canonical
+synchronizing known local suite changes. It installs all five sibling skills and records canonical
 source/registry locations in `suite-source.json`. Keep that checkout available for registry access.
 It never installs unrelated skills or executes recorded evidence commands.
 

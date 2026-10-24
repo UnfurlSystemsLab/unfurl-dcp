@@ -1,10 +1,19 @@
 # Plan: API-driven skills, tool hooks and runtime graphs
 
 Date: 19 October 2026; coordinator design revised 22 October 2026. Status: authoring infrastructure
-partly implemented as recorded below; isolated package coordinator remains proposed. Configuration
+implemented as recorded below; package coordinator is locally host-bound, pending deployment bindings. Configuration
 excerpts are not installed runtime bindings. Extends the suite HLD/LLD and responsibility review.
 
 ## Implementation record — 19 October 2026
+
+Coordinator revision, 24 October 2026: delivered the fifth `create-dcp-software-package` skill,
+versioned compact run/interaction/result/manifest schemas, canonical handoff verifier adapter and
+Flow-owned package journal/coordinator/archive projector. Optional DCP provider operations require
+accepted runtime bindings, approved native stage definitions and mandatory host authority,
+verification, interaction, audit and containment ports. Native specialist/development graph builders
+reuse agent.run and development.task.*; Fabric composition remains in actual admitted stage workflows.
+See [Flow coordinator LLD](../../unfurl-flow/docs/LLD-software-package-coordinator.md). This is
+implemented host infrastructure, not a deployed full-service autonomous authoring installation.
 
 Delivered: source-grounded 26-operation call manifest, closed pinned host profiles, mandatory
 pre/post/failure hooks, durable no-replay journal, bounded HTTP transport, authenticated local
@@ -264,8 +273,9 @@ stale proposals must be checked before submission. Approval is not standing perm
 
 ### Single-entry Agent-as-a-Tool extension (22 October 2026)
 
-The extension below remains proposed. Existing call-runner and native graph utilities feed its
-validation gates; they do not establish that the isolated coordinator is already operational.
+The extension below is implemented as a host-bound Flow library and a discoverable facade skill.
+Existing call-runner and native graph utilities feed its validation gates. A deployment must still
+bind actual stage workflows, services and current authorization before execution is operational.
 
 ```mermaid
 flowchart TD
@@ -288,7 +298,7 @@ flowchart TD
 ```
 
 Add the `create-dcp-software-package` facade without duplicating the existing four specialist skills.
-Its proposed `create_dcp_software_package` DCP operation admits a run into a host-bound Flow
+Its `create_dcp_software_package` DCP operation admits a run into a host-bound Flow
 coordinator. Foundry executes isolated bounded specialist contexts; Fabric remains the composition
 authority. Code generation uses an explicit workspace-scoped development-task runner, not a claimed
 ability to execute SKILL.md directly on the server. No runtime SDK enters DCP production packages.
@@ -310,11 +320,11 @@ Implement this extension in dependency order:
 6. Package only declared verified artifacts, with manifest/archive digests and honest readiness.
    Validate the whole controlled-service pipeline before claiming autonomous execution support.
 
-The HLD describes ownership/context boundaries; the LLD defines proposed state, handoff, isolation
+The HLD describes ownership/context boundaries; the LLD defines state, handoff, isolation
 and interaction contracts. Their new coordinator acceptance scenarios supplement the existing API
-and hook scenarios below. The current API runner and graph projector are building blocks, not
-evidence that this new coordinator, facade or development runner already exists. Ordinary skill
-handoffs remain the available execution path until the extension is implemented and validated.
+and hook scenarios below. The API runner and graph projector remain building blocks rather than
+authority sources. The coordinator/facade and development runner now have local implementations;
+ordinary skill handoffs remain the path where their deployment bindings are absent.
 
 ### Existing API and application implementation waves
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:unfurl:authoring:package-interaction",
+  "type": "object",
+  "properties": {
+    "requestId": {"type": "string", "minLength": 1, "maxLength": 256},
+    "kind": {"enum": ["question", "approval"]},
+    "purpose": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "options": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 512}},
+    "intentDigest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "expiresAt": {"type": "string", "format": "date-time"}
+  },
+  "required": ["requestId", "kind", "purpose", "options", "intentDigest", "expiresAt"],
+  "additionalProperties": false
+}

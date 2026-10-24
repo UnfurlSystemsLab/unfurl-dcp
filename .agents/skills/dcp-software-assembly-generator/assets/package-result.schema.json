@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:unfurl:authoring:package-result",
+  "allOf": [
+    {"$ref": "urn:unfurl:authoring:package-run"},
+    {"type": "object", "properties": {"state": {"const": "completed"}}, "required": ["state"]}
+  ]
+}

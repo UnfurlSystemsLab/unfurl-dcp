@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create DCP Software Package"
+  short_description: "Coordinate resumable DCP software package builds"
+  default_prompt: "Use $create-dcp-software-package to build a governed software package through the configured coordinator."
