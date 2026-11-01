@@ -9,6 +9,13 @@ Generate native graph artifacts incrementally, not a new orchestration DSL. Read
 [runtime-authoring.md](references/runtime-authoring.md) and the assembly suite's
 [handoff contracts](../dcp-software-assembly-generator/references/handoffs.md).
 
+When consuming or producing a reusable composite, read the
+[storage lifecycle](../dcp-software-assembly-generator/references/composite-storage.md).
+Pin the exact verified root/child contract closure and selected environment binding revision;
+do not treat claim containment, a release index or a named capability profile as runtime acceptance.
+Graph/contract drift requires revalidation and new immutable release/binding outputs where affected.
+Missing tool/data-access enforcement cannot be replaced by a no-tools/no-RAG/read-only profile name.
+
 Use the implemented `runtime_bundle.py` projector and
 [API/hook execution guide](../dcp-software-assembly-generator/references/api-execution.md).
 It emits native authoring preflight/call/post-gate workflows, Foundry reasoning agents/skills,

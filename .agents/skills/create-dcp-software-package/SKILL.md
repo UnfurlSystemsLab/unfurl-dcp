@@ -38,3 +38,11 @@ At completion retrieve `software.package.result`. Verify the package/manifest/ev
 through the configured artifact surface. Report readiness separately from run completion:
 authored artifacts are useful, but runnable requires verified bindings and actual startup checks.
 Live trades, production deployment and other external effects require their own authorization.
+
+For reusable composite packages, read the assembly workflow's
+[storage lifecycle](../dcp-software-assembly-generator/references/composite-storage.md).
+Have admitted host stages retain verified Fabric release indexes/payloads and environment-specific
+binding revisions. Pin them through existing artifact references; do not change closed package schemas
+or mistake the package manifest for a Fabric release index. Missing storage-stage bindings remain an
+explicit prerequisite; direct CLI execution must not bypass the configured coordinator. Report storage
+verification separately from package readiness and runtime activation.

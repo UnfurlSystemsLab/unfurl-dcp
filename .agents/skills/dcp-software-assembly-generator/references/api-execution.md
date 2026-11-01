@@ -5,6 +5,10 @@ This development-time runner is separate from the offline `suite.py` validators.
 profile must be operator-controlled and its SHA-256 pinned by the caller. Possession of a
 profile file is not a substitute for real upstream authentication or DCP authorization.
 
+Fabric's local `assembly-*` storage commands have a separate CLI execution boundary; they are not
+operations in this HTTP call manifest. Follow [composite-storage.md](composite-storage.md) when needed.
+Do not invent storage HTTP routes/grants or bypass a host-managed coordinator with shell commands.
+
 ## Setup
 
 Use the suite's isolated Python dependencies. Do not paste secrets into chat, arguments or

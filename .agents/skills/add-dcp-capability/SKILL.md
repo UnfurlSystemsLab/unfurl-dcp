@@ -83,6 +83,13 @@ Flag assumptions. Do not broaden ownership merely because the wrapped product ca
 
 ### Phase 4: Author Canonical Artifacts
 
+For reusable composite artifacts, consult the assembly workflow's
+[storage and version mapping](../dcp-software-assembly-generator/references/composite-storage.md).
+Reuse existing claim/offer/contract version axes and DCP freeze/binding formats; Fabric's signed
+release/deployment indexes are storage associations, not new DCP contracts or authority grants.
+Preserve provider versus assembly/deployment ownership. Verify the target models before using
+structured dependencies or forbidden-profile fields; responsibility refusals do not enforce exclusions.
+
 Create or update:
 
 Provider repositories own claim JSON/catalog/schema and invocation artifacts. Consumer needs,
