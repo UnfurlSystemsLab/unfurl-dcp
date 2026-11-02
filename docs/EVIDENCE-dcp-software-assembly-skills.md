@@ -1,5 +1,26 @@
 # Software assembly skill suite verification
 
+## Composite storage guidance — 31 October 2026
+
+All five canonical skill entrypoints route applicable reusable-composite work to the shared
+`dcp-software-assembly-generator/references/composite-storage.md`. HLD, LLD and build spec describe
+the source/release/deployment split, independent version axes, actual Fabric CLI boundary, existing
+handoff artifact pins, unsupported constraint fields and storage-versus-runtime readiness limits.
+Commands were reconciled against the local Fabric implementation in the
+`feat/composite-artifact-storage-20261031` worktree; availability in other builds/deployments must
+still be verified. No storage HTTP endpoint, DCP Java schema or coordinator stage was added here.
+
+- Skill-creator `quick_validate.py`: all five canonical skills passed.
+- `check_suite.py`: five skills, metadata, local references, 11 schemas, call manifest and registry structure passed.
+- `python -m unittest discover -s .agents/skills/dcp-software-assembly-generator/scripts/tests -v`:
+  51 tests passed, covering existing offline tooling and controlled loopback API behavior.
+- Installed source-marker hashes showed no user modifications before synchronization. The canonical
+  installer synchronized all five skills into the configured Codex skill directory, preserving unrelated files.
+
+This is instructional/installation validation. The tooling tests do not establish model behavior,
+live Fabric storage availability, a deployed coordinator, or application runtime readiness. No native
+Java or live broker/provider validation was required or run for this guidance-only change.
+
 ## API and hook execution — 19 October 2026
 
 - 42 Python tests pass, including real authenticated loopback HTTP, preflight denial,

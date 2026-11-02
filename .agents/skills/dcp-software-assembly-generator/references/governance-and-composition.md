@@ -44,3 +44,8 @@ state only. Ambiguous valid composition candidates require a deliberate user/pol
 No supplied signing key means a blocked signing prerequisite. Never use fixture keys as project
 trust or fabricate an accepted runtime registration. Invalidate derived compilation/graph outputs
 after relevant adapter, contract, binding or governance drift.
+
+For reusable composite source/release/binding storage, follow
+[composite-storage.md](composite-storage.md). Discover the actual Fabric build before invoking its
+local lifecycle commands. Keep admission trust, release signatures, environment wiring and runtime
+authorization distinct; neither profile names nor signed storage indexes establish enforcement.

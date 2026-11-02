@@ -59,6 +59,28 @@ skills must sanitize evidence before including it.
 
 ## CLI contracts
 
+### Fabric composite storage integration
+
+All five skills route relevant source/version/release/binding work to the assembly specialist's
+`references/composite-storage.md`. The assembly specialist owns the complete lifecycle; adapter skills preserve
+publisher versus assembly ownership; the graph specialist consumes the released closure and selected environment
+binding; the package facade requests and verifies artifacts through its actual host surface. The guidance names
+Fabric's `assembly-init`, `assembly-publish`, `assembly-verify`, `assembly-bind`, and `assembly-verify-binding`
+commands and their actual arguments, but requires verifying availability in the chosen Fabric build first.
+
+Use existing `decisions`, `artifacts`, and `checks` for locators, pinned storage indexes/payloads and verification
+reports; do not add unsigned release-shaped fields to closed progress or package schemas. Package artifact paths
+remain package-relative: include the verified referenced payloads when preparing a portable package and retain
+private-path exclusions. Neither a copied release manifest nor a successful `suite.py --artifacts` digest check
+verifies Fabric signatures or a complete release/binding closure. Invoke the real Fabric verifier independently.
+
+The local Fabric CLI has a separate execution boundary from `api_calls.py`'s allowlisted HTTP operations. Do not
+invent routes/grants or bypass the host-bound coordinator with direct CLI calls. Missing commands, keys or host
+bindings block dependent release steps while independent source/graph authoring can continue. Installed skills are
+synchronized through the existing suite installer after checking its source-marker hashes for local divergence.
+Validation uses skill-creator metadata checks, `check_suite.py`, existing tooling tests and installed-file hash
+verification; this instructional change does not require a DCP Java runtime/schema change.
+
 Run `python <skill>/scripts/suite.py --help` for exact arguments.
 
 - `validate KIND FILE [--artifacts]`: schema and semantic checks; optional file/digest verification.

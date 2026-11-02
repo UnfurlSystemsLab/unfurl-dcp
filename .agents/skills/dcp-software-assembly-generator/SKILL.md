@@ -17,7 +17,7 @@ handles durable isolated stages; this workflow remains the reusable interview/as
 Read [api-execution.md](references/api-execution.md) when calling Fabric/Flow APIs. Use the
 implemented `api_calls.py` runner and pinned host profile for source-grounded operations in
 the call manifest. Do not bypass its scope/schema/intent/result/redaction/outcome checks with
-an ungoverned HTTP call. CLI and optional loopback gateway use the same implementation.
+an ungoverned HTTP call. The runner's CLI and optional loopback gateway use the same implementation.
 Missing credentials block actual calls, not graph/adapter development. Runtime host/adapter
 authorization is still mandatory and cannot be replaced by these development-time hooks.
 
@@ -88,6 +88,13 @@ and completed dependencies; report cycles and unresolved needs instead of repeat
 External host/customer systems become explicit bindings, not fabricated peer components.
 
 ## Compose and build
+
+When creating, reusing, releasing or binding a reusable composite, read
+[composite-storage.md](references/composite-storage.md). Keep publisher source, immutable signed releases
+and tenant/environment binding revisions separate. Verify the actual Fabric build supports its storage
+commands; missing support blocks release steps, not independent authoring. Keep claim, offer, contract,
+release and binding versions distinct. Record locators and pinned artifacts through existing handoff fields.
+Storage verification alone does not establish runtime readiness or enforce named capability restrictions.
 
 Use the existing Fabric tools/CLI and validators discovered in the target checkout. Import verified
 artifacts into its catalog, author needs, resolve candidates, compile, sign with authorized keys and

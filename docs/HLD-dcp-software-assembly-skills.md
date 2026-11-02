@@ -97,6 +97,28 @@ the generated application's runtime choice: Flow-only, Foundry-only, both and ne
 
 ## Assembly lifecycle
 
+### Reusable composite source and artifact lifecycle
+
+The suite follows Fabric's source/release/deployment storage lifecycle when building or reusing a reusable
+Flow-only, Foundry-only, or combined composite. Publisher-owned `assemblies/{family}/{name}` source uses the
+existing catalog manifest and needs formats. Fabric owns immutable signed release indexes, frozen root/child
+contracts and exact selected artifacts; deployment owners save separate tenant/environment binding revisions.
+The suite invokes supported Fabric commands rather than implementing another repository, signer or contract format.
+An application choosing neither runtime does not acquire a Flow/Foundry composite family merely to fit storage.
+
+Keep stable claim identity, claim revision, offer compatibility version, composition-contract identity/version,
+assembly release version and binding revision distinct. Capability profiles are separate from substrate profiles.
+Required/optional needs use implemented Fabric constructs; forbidden-capability constraints and structured dependency
+fields unsupported by the target models must be reported rather than silently authored or treated as enforced.
+
+Storage support is locally implemented in Fabric and must be discovered in the actual target revision before use.
+No new HTTP operation, call-manifest grant, coordinator binding or deployed service follows from CLI availability.
+Record release/binding locators in existing progress decisions and pin indexes/payloads/evidence through existing
+artifact references. This introduces no DCP core or specialist/package handoff schema changes. Offline storage
+verification does not establish readiness, acceptance, authorization, endpoint connectivity or workload conformance.
+The shared skill reference is
+[composite-storage.md](../.agents/skills/dcp-software-assembly-generator/references/composite-storage.md).
+
 Authoring is incremental rather than gated on live connectivity. Draft the capability graph as
 soon as the user flow is understood; refine it alongside adapter and governance work. Missing
 credentials, data coverage or runtime bindings block dependent validation/execution, not all

@@ -64,6 +64,12 @@ Its ownership and implementation contracts are defined in
 [`LLD-dcp-software-assembly-skills.md`](LLD-dcp-software-assembly-skills.md).
 Keep skill tooling dependencies outside Maven and production DCP packages.
 
+Reusable composite storage guidance is shared from the assembly skill's
+`references/composite-storage.md` and routed from all five entrypoints. It reuses Fabric's source,
+signed release and deployment-binding lifecycle; it adds no DCP runtime dependency, schema or
+authoring HTTP operation. Validate metadata/local links and existing offline suite tests, then
+synchronize installed suite files with the canonical installer after checking local file hashes.
+
 The host-bound single-entry Agent-as-a-Tool coordinator is specified in those suite designs.
 Its facade and authoring contracts may be maintained here as development artifacts; executable
 orchestration belongs to Flow, agent execution to Foundry, composition to Fabric, and scoped

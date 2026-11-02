@@ -12,6 +12,13 @@ needs, selected adapters with versions/hashes, dependency edges, governance, run
 Merge child results only after schema, file hash, identity, scope and requested-operation checks.
 Preserve unanswered needs and external prerequisites. Revalidate derived artifacts after drift.
 
+For reusable composite releases, use the
+[storage lifecycle](composite-storage.md). Record family, logical URI, claim/offer/contract versions,
+selected profile, release locator/version and binding environment/revision in existing `decisions`;
+pin real indexes, referenced payloads and verification evidence in `artifacts`/`checks`. Preserve closed
+handoff schemas. `suite-source.json`, package manifests and Fabric signed indexes have distinct roles.
+Digest verification during handoff does not replace Fabric release/binding signature and closure checks.
+
 ## Setup and commands
 
 Use Python 3.11+ and install development dependencies from
