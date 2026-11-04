@@ -172,6 +172,7 @@ Required rule classes include:
 - YAML/JSON claim documents deserialize via Jackson and validate successfully.
 - Invalid claims (empty refusals, missing boundary principles, missing negotiation surface for intelligent component) fail validation with deterministic errors.
 - `faults` is always explicit in Java producers and claim YAML. Producers with no declared operational faults use `faults: { emitted: [] }`; constructors must not silently add it.
+- A component's claim is one fixed document packaged as the `claim` block of `META-INF/unfurl-catalog.yaml` (HLD-C §3.10). `PackagedClaim.load(loader, uri)` returns exactly the packaged claim with that identity, validated and unchanged, and fails when no manifest or more than one carries it; `PackagedClaim.parse(bytes)` does the same for manifest bytes read from an artifact. Runtimes report and check this claim and never build one from their profile or loaded definitions.
 
 ### 2B) Fault Vocabulary And Propagation
 - Claims carry a first-class `faults` section declaring emitted fault codes, affected needs/offers/constraints, propagation policy, evidence, and allowed remediation actions.

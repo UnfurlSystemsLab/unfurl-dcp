@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.unfurl.dcp.claim.ClaimMetadata;
+import com.unfurl.dcp.claim.Dependencies;
 import com.unfurl.dcp.contract.ContractCodec;
 import com.unfurl.dcp.fault.*;
 import com.unfurl.dcp.manifest.*;
@@ -62,9 +63,25 @@ class PublicRecordRoundTripTest {
         assertThat(metadata.createdAt()).isEqualTo(Instant.EPOCH);
     }
 
+    /**
+     * Claim-hash stability: an empty optional list is left out of the canonical bytes, so a claim without optional
+     * dependencies serializes exactly as it did before the field existed, and the old wire form still reads.
+     */
+    @Test
+    void emptyOptionalDependenciesAreOmittedFromCanonicalBytes() throws Exception {
+        String json = JSON.writeValueAsString(new Dependencies(List.of("model-provider@v1")));
+
+        assertThat(json).isEqualTo("{\"needs\":[\"model-provider@v1\"]}");
+        assertThat(JSON.readValue(json, Dependencies.class))
+                .isEqualTo(new Dependencies(List.of("model-provider@v1"), List.of()));
+    }
+
     static Stream<org.junit.jupiter.params.provider.Arguments> records() {
         return Stream.of(
                 org.junit.jupiter.params.provider.Arguments.of("Claim", Fixtures.validProviderClaim(), com.unfurl.dcp.claim.Claim.class),
+                org.junit.jupiter.params.provider.Arguments.of("Dependencies", new Dependencies(
+                        List.of("model-provider@v1?owner=customer-provider"), List.of("workflow.execute@v1?owner=unfurl-flow")),
+                        Dependencies.class),
                 org.junit.jupiter.params.provider.Arguments.of("FaultPolicy", Fixtures.providerFaultPolicy(), FaultPolicy.class),
                 org.junit.jupiter.params.provider.Arguments.of("FaultSignal", faultSignal(), FaultSignal.class),
                 org.junit.jupiter.params.provider.Arguments.of("CompositionContract", Fixtures.validContract(), com.unfurl.dcp.contract.CompositionContract.class),

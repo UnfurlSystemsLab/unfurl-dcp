@@ -160,6 +160,17 @@ Refusals are elevated in v0.2: they are the behavior most distinctive to DCP, th
 
 What the component needs to function. `required`, `recommended`, and `forbidden`. Each dependency states what satisfies it (`satisfied_by`: kind + properties required + optional example claims). Per v0.1 observation #2, writing dependencies surfaces structural truths — e.g., "this component requires a reasoning model" makes the intelligence itself a dependency rather than an intrinsic property. The `forbidden` list is where exclusive-ownership conflicts are pre-declared (e.g., "no second identity provider claiming the same realm").
 
+In the v0.2 wire format (`com.unfurl.dcp.claim.Dependencies`), dependencies are dependency URIs (`<capability>@<version>[?<qualifiers>]`) in two lists:
+
+- `needs` (the `required` tier): the component cannot work without them. A composition that selects the component and does not satisfy one is invalid.
+- `optional` (the `recommended` tier): the component works without them and uses them when the composition provides them. Their absence never invalidates a composition. When a composition does provide one, it is an ordinary dependency edge: it binds, is frozen in the contract, and must satisfy the same compatibility, trust and binding checks as a need.
+
+Rules:
+
+- A dependency's capability appears in at most one of the two lists; a claim that puts it in both is malformed, because whether it may be absent would be ambiguous.
+- `optional` is omitted from canonical serialization when empty, so claims without optional dependencies keep their existing canonical bytes and claim hashes.
+- Qualifiers (`transport=`, `owner=`, …) mean the same thing in both lists.
+
 ### 3.5 Offers
 
 What the component exposes for others to consume. Each offer has a name, description, allowed consumers (`any` / `named_components_only`), an interface (kind + details), a stability level, and optional `cost_implications`. Per v0.1 observation #6, the cost_implications field is small but important — it is honest about token/inference cost in a way most service specs are not. Offers are the surface that Plane 2 negotiation binds against: a contract maps a consumer's *need* to a provider's *offer*.
@@ -204,6 +215,34 @@ of blast radius, affected claims, and allowed remediation actions.
 ### 3.9 Metadata
 
 DCP version, claim version, supersedes list, effective-from, references.
+
+### 3.10 Packaging and immutability
+
+A claim describes a released component, not a configured instance of it. It is one fixed document that ships inside the
+component's artifact, in the `claim` block of `META-INF/unfurl-catalog.yaml`, and it is the same document everywhere
+the component is described:
+
+- **Nothing derives a claim at runtime.** A component never rebuilds, extends or narrows its own claim from a runtime
+  profile, configuration, loaded definitions (workflows, agents) or the components it finds enabled. A runtime that
+  reports or checks its claim reads the packaged one (`com.unfurl.dcp.claim.PackagedClaim`). What a configured process
+  can serve at the moment is a runtime readiness fact; it is checked as such and is never presented as a claim.
+- **Nothing reconstructs a claim.** Tools that compose, compile, export or report components work from the claim read
+  out of the artifact. They never synthesize a stand-in claim from display assets or partial records, and never reuse
+  one claim's hash for another document. A display read model, such as the recursive projection that groups
+  components into a navigable tree (§5.6), may build its own view nodes; they are views, named under the tool's own
+  URIs, and are never admitted, compiled, exported or presented as a component's claim. A component with no claim read
+  from its artifact can be shown, but not composed.
+- **A claim is never admitted apart from its artifact.** A catalog reads the claim out of the artifact bytes and pins
+  the artifact's own SHA-256 next to the claim hash. A claim document submitted without the artifact that carries it is
+  refused, because nothing ties it to the component that will run.
+- **Compilation is the only place the claim is narrowed or bound.** What one deployment uses — which optional
+  dependencies are provided, which named storage providers, connectors, tools or trigger ingress it binds, which
+  identity and audit hosts it uses — is stated in the needs, frozen into the signed composition contract (§5.2), and
+  supplied through the runtime binding (§5.2A). The claim declares the dependency once, generically (an `optional`
+  dependency, §3.4, when the component runs without it); the instance detail never goes back into the claim.
+
+A change to what a component owns, offers or depends on is therefore a new claim version in a new artifact (§8), never a
+runtime edit.
 
 ### Resolving the v0.1 state/decisions/concerns overlap (v0.1 observation #5)
 
