@@ -362,6 +362,28 @@ or `FaultPolicy.empty()` explicitly so missing fault vocabulary is caught during
 
 Validation results are structured records (see §8), never exceptions for expected validation failures.
 
+#### Packaged claim reader (HLD-C §3.10)
+
+A component's claim is the `claim` block of the `META-INF/unfurl-catalog.yaml` resource packaged in its artifact.
+`com.unfurl.dcp.claim.PackagedClaim` is the one reader every runtime uses to obtain its own claim, so no runtime builds
+a second, profile-dependent claim:
+
+```java
+public final class PackagedClaim {
+    public static final String RESOURCE = "META-INF/unfurl-catalog.yaml";
+    public static Claim load(ClassLoader loader, URI expectedUri);   // reads RESOURCE from the loader
+    public static Claim parse(byte[] manifestBytes);                 // reads the claim block of manifest bytes
+}
+```
+
+- `parse` reads the snake_case YAML manifest leniently (unknown fields ignored, as the catalog block is not DCP's) and
+  binds only the top-level `claim` block. A manifest without a `claim` block, or a claim with validation errors under
+  `ClaimValidator`, fails with `PackagedClaimException` carrying the diagnostics; it never returns a partial claim.
+- `load` reads every `RESOURCE` the loader can see and returns the one whose `identity.uri` is `expectedUri`. It fails
+  when none or more than one match, so a runtime on a classpath that also holds other components' jars still gets
+  exactly its own claim and never another's.
+- The reader never edits the claim. Hashing for pinning stays with the catalog that admits the artifact.
+
 ### Fault Vocabulary And Propagation Gate (HLD-C2 A.10)
 
 Records in `com.unfurl.dcp.fault`:

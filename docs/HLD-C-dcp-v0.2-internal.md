@@ -216,6 +216,34 @@ of blast radius, affected claims, and allowed remediation actions.
 
 DCP version, claim version, supersedes list, effective-from, references.
 
+### 3.10 Packaging and immutability
+
+A claim describes a released component, not a configured instance of it. It is one fixed document that ships inside the
+component's artifact, in the `claim` block of `META-INF/unfurl-catalog.yaml`, and it is the same document everywhere
+the component is described:
+
+- **Nothing derives a claim at runtime.** A component never rebuilds, extends or narrows its own claim from a runtime
+  profile, configuration, loaded definitions (workflows, agents) or the components it finds enabled. A runtime that
+  reports or checks its claim reads the packaged one (`com.unfurl.dcp.claim.PackagedClaim`). What a configured process
+  can serve at the moment is a runtime readiness fact; it is checked as such and is never presented as a claim.
+- **Nothing reconstructs a claim.** Tools that compose, compile, export or report components work from the claim read
+  out of the artifact. They never synthesize a stand-in claim from display assets or partial records, and never reuse
+  one claim's hash for another document. A display read model, such as the recursive projection that groups
+  components into a navigable tree (§5.6), may build its own view nodes; they are views, named under the tool's own
+  URIs, and are never admitted, compiled, exported or presented as a component's claim. A component with no claim read
+  from its artifact can be shown, but not composed.
+- **A claim is never admitted apart from its artifact.** A catalog reads the claim out of the artifact bytes and pins
+  the artifact's own SHA-256 next to the claim hash. A claim document submitted without the artifact that carries it is
+  refused, because nothing ties it to the component that will run.
+- **Compilation is the only place the claim is narrowed or bound.** What one deployment uses — which optional
+  dependencies are provided, which named storage providers, connectors, tools or trigger ingress it binds, which
+  identity and audit hosts it uses — is stated in the needs, frozen into the signed composition contract (§5.2), and
+  supplied through the runtime binding (§5.2A). The claim declares the dependency once, generically (an `optional`
+  dependency, §3.4, when the component runs without it); the instance detail never goes back into the claim.
+
+A change to what a component owns, offers or depends on is therefore a new claim version in a new artifact (§8), never a
+runtime edit.
+
 ### Resolving the v0.1 state/decisions/concerns overlap (v0.1 observation #5)
 
 v0.1 had `state_owned` and `decisions_owned` as separate subsections that overlapped with `concerns`. **v0.2 resolution (decision point — flag for review):** keep `concerns` as the primary ownership unit, and make `state` and `decisions` *attributes of a concern* rather than parallel top-level lists. A concern owns some state and some decisions; expressing them under the concern they belong to removes the overlap and keeps related facts together. The cost is that a concern entry becomes larger. The alternative (keep them separate) is retained as an option if review prefers the flatter shape. This is the one genuine modeling fork in v0.2 and is left explicit rather than silently decided.
