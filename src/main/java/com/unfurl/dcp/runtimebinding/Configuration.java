@@ -2,8 +2,22 @@ package com.unfurl.dcp.runtimebinding;
 
 import java.util.Map;
 
-public record Configuration(Map<String, Object> values) {
+/**
+ * Value Object: a runtime binding's non-secret configuration (HLD-C2 §C {@code configuration}).
+ *
+ * <p>{@code values} holds plain non-secret settings; {@code configRefs} holds typed references to
+ * environment-specific configuration, such as an IdP token endpoint or a verification key set, which
+ * must never be inlined. Both maps are copied and never null.
+ */
+public record Configuration(Map<String, Object> values, Map<String, ConfigRef> configRefs) {
+    /** Canonical constructor: defensive, null-safe copies. */
     public Configuration {
         values = values == null ? Map.of() : Map.copyOf(values);
+        configRefs = configRefs == null ? Map.of() : Map.copyOf(configRefs);
+    }
+
+    /** Convenience constructor: plain values with no configuration references. */
+    public Configuration(Map<String, Object> values) {
+        this(values, Map.of());
     }
 }
