@@ -89,6 +89,33 @@ class ClaimValidatorTest {
                 });
     }
 
+    /** A capability may be required or optional, not both, whatever version or qualifiers each entry carries. */
+    @Test
+    void dependencyInBothNeedsAndOptionalIsMalformed() {
+        Claim valid = Fixtures.validProviderClaim();
+        Claim both = withDependencies(valid, new Dependencies(
+                java.util.List.of("workflow.execute@v1?owner=unfurl-flow"),
+                java.util.List.of("workflow.execute@v2", "audit-sink@v1")));
+
+        assertThat(new ClaimValidator().validate(both).diagnostics())
+                .filteredOn(diagnostic -> "dependencies.optional".equals(diagnostic.fieldPath()))
+                .singleElement()
+                .satisfies(diagnostic -> {
+                    assertThat(diagnostic.code()).isEqualTo(ErrorCode.CLAIM_MALFORMED);
+                    assertThat(diagnostic.message()).contains("workflow.execute");
+                });
+    }
+
+    /** Optional dependencies that don't repeat a need are valid. */
+    @Test
+    void distinctOptionalDependenciesAreValid() {
+        Claim valid = Fixtures.validProviderClaim();
+        Claim optional = withDependencies(valid, new Dependencies(
+                java.util.List.of("model-provider@v1"), java.util.List.of("workflow.execute@v1")));
+
+        assertThat(new ClaimValidator().validate(optional).valid()).isTrue();
+    }
+
     @Test
     void propagatingFaultRequiresGateCondition() {
         Claim valid = Fixtures.validProviderClaim();
@@ -117,5 +144,12 @@ class ClaimValidatorTest {
                     assertThat(diagnostic.code()).isEqualTo(ErrorCode.FAULT_MALFORMED);
                     assertThat(diagnostic.fieldPath()).isEqualTo("faults.emitted.propagation.propagates_when");
                 });
+    }
+
+    /** Fixture helper: copies a claim with different dependencies. */
+    private static Claim withDependencies(Claim claim, Dependencies dependencies) {
+        return new Claim(claim.identity(), claim.domain(), claim.refusals(), dependencies, claim.offers(),
+                claim.conflictResolution(), claim.negotiationSurface(), claim.integrationPorts(), claim.faults(),
+                claim.metadata());
     }
 }

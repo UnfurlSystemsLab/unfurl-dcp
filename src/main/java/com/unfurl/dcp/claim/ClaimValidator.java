@@ -68,6 +68,7 @@ public final class ClaimValidator {
         for (Offer offer : claim.offers()) {
             validateOffer(offer, diagnostics);
         }
+        validateDependencies(claim.dependencies(), diagnostics);
         validateFaults(claim, diagnostics);
         for (Refusal refusal : claim.refusals()) {
             if ("everything-else".equalsIgnoreCase(refusal.concern()) || refusal.rationale() == null || refusal.rationale().length() < 12) {
@@ -91,6 +92,36 @@ public final class ClaimValidator {
         boolean negotiation = offer.offerInterface() != null && offer.offerInterface().interfaceKind() == InterfaceKind.NEGOTIATION;
         if ((offer.metered() || negotiation) && (offer.costImplications() == null || offer.costImplications().isBlank())) {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "cost_implications are required for metered or negotiation offers", "offers.cost_implications"));
+        }
+    }
+
+    /**
+     * Helper: rejects a capability declared both as a need and as an optional dependency (HLD-C v0.2 §3.4), because
+     * whether the component may run without it would then be ambiguous. Names are compared by
+     * {@link Dependencies#capabilityOf}, so differing versions or qualifiers don't hide the overlap.
+     */
+    private void validateDependencies(Dependencies dependencies, List<Diagnostic> diagnostics) {
+        if (dependencies == null) {
+            return;
+        }
+        HashSet<String> required = new HashSet<>();
+        for (String need : dependencies.needs()) {
+            String capability = Dependencies.capabilityOf(need);
+            if (capability != null) {
+                required.add(capability);
+            }
+        }
+        java.util.TreeSet<String> both = new java.util.TreeSet<>();
+        for (String optional : dependencies.optional()) {
+            String capability = Dependencies.capabilityOf(optional);
+            if (capability != null && required.contains(capability)) {
+                both.add(capability);
+            }
+        }
+        for (String capability : both) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED,
+                    "dependency " + capability + " is listed in both needs and optional; list it in one",
+                    "dependencies.optional"));
         }
     }
 
