@@ -118,7 +118,7 @@ class PublicRecordRoundTripTest {
                 new ProviderInstance(URI.create("urn:provider"), "1.0.0", "provider", DeploymentKind.IN_PROCESS, null, new ConfigRef("config://base-url"), new SecretRef("secret://provider")),
                 new ConsumerInstance(URI.create("urn:consumer"), "1.0.0", "consumer"),
                 new RuntimePolicy(true, 1000, "test", true),
-                new Configuration(Map.of("setting", "value")),
+                new Configuration(Map.of("setting", "value"), Map.of("endpoint", new ConfigRef("config://endpoint"))),
                 new DeploymentControls(Map.of("replicas", 1)),
                 new Lifecycle(true),
                 new RuntimeBindingMetadata(Map.of("contains", List.of("urn:binding:child"))));
