@@ -1146,7 +1146,7 @@ except that the component, not the deployment, decides what may be overridden:
 | Layer | Where | Holds | Changes with |
 |---|---|---|---|
 | Packaged | `META-INF/unfurl-config.yaml` in the claim-bearing artifact | the schema of every key, and defaults for `source: packaged` keys | a new artifact, so a new pin, recompile and re-sign |
-| Deployment | the runtime binding's `configuration.values` (inline, signed with the binding) or `configuration.config_refs` (a `config://` reference) | `source: deployment` keys, and tightened packaged keys | a new binding revision, or the referenced value |
+| Deployment | the trusted runtime binding's `configuration.values` (inline) or `configuration.config_refs` (a `config://` reference) | `source: deployment` keys, and tightened packaged keys | a new binding revision, or the referenced value |
 | Effective | `ActivationContext.configuration()` | the merge, validated | admission, and only admission |
 
 **The packaged file.** It is read from the artifact's base `META-INF/` path (never versioned; a copy under
@@ -1195,10 +1195,18 @@ the source is the host's choice and DCP is indifferent to it:
 | Files on the host, e.g. a Kubernetes ConfigMap or Secret mounted as a volume | A file-backed resolver, such as Foundry's `deployment-config-resolver`. The ConfigMap is just files, so no Kubernetes client is needed. |
 | Kubernetes API, Vault, Azure App Configuration, AWS Parameter Store, Spring Cloud Config | A host-contributed resolver adapter (Foundry: `FoundryAdapterFactoryContributor`). |
 
-An inline value is covered by the binding's signature, so changing it takes a new binding revision. A referenced value
-can change in its store without one. It is still checked by every rule below, so a ConfigMap edit can tighten
-`maxRows` but cannot redirect `portfolioBase`, widen `allowedHosts` or inline a secret. A deployment that wants every
-value under signature uses inline values only.
+**Binding trust boundary.** The host accepts runtime-binding bytes only from its trusted deployment provisioning
+path. `RuntimeBindingCodec` decodes them and `RuntimeBindingValidator` checks structure and contract identity; neither
+verifies a signature. `assembly-bind` can store a deployment-owner-signed repository index covering the binding's
+payload hash. Provisioning that uses this mechanism must verify that index against trusted deployment-owner keys,
+verify the payload hash and requested release/tenant/environment/revision, then install those exact bytes into the
+protected overlay. The proposed host does not consume that signed index itself. A read-only mount restricts runtime
+writes but does not authenticate the source. An unauthenticated overlay must not be provisioned as trusted input.
+
+Changing an inline value takes a new provisioned binding revision. A referenced value can change in its store without
+one. It is still checked by every rule below, so a ConfigMap edit can tighten `maxRows` but cannot redirect
+`portfolioBase`, widen `allowedHosts` or inline a secret. Inline values have cryptographic integrity only when the
+deployment provisioning path verifies their signed revision and payload hash; merely using inline values is not enough.
 
 **Merge and checks (stage 1, host code only).** For each key in the schema:
 

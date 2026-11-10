@@ -471,7 +471,10 @@ operations reach its own callers (Foundry: agent tools; Flow: workflow capabilit
    builds the component's effective configuration from its packaged `META-INF/unfurl-config.yaml` and the runtime
    binding. Every deployment key must be supplied. A packaged key can change only as its schema allows, and only
    toward stricter values where it says `tighten`. A secret is always a `secret://` reference, never a value. The
-   binding may give a value inline (signed with the binding) or as a `config://` reference. A reference is resolved by
+   binding may give a value inline or as a `config://` reference. Runtime bindings must come from the host's trusted
+   deployment provisioning path; the binding codec and validator do not authenticate them. If provisioning uses a
+   signed repository revision, it must verify the revision's signature and binding payload hash before installing the
+   file. A read-only mount alone is not signature verification. A reference is resolved by
    the host's configuration resolver, which may be backed by mounted files, Kubernetes ConfigMaps, or a configuration
    service. The result is checked by the same rules and fixed for the life of the admission.
 
