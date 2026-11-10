@@ -240,6 +240,13 @@ the component is described:
   identity and audit hosts it uses — is stated in the needs, frozen into the signed composition contract (§5.2), and
   supplied through the runtime binding (§5.2A). The claim declares the dependency once, generically (an `optional`
   dependency, §3.4, when the component runs without it); the instance detail never goes back into the claim.
+- **Configuration is packaged beside the claim, not in it [proposed].** A component that takes configuration ships
+  `META-INF/unfurl-config.yaml` next to its catalog manifest: a schema of its keys, saying for each whether the
+  component fixes it (`source: packaged`, with a default) or each deployment must supply it (`source: deployment`), and
+  how far a deployment may change a packaged value. Defaults that are the same for every customer, such as a vendor's
+  API hosts or resource limits, ship there, pinned with the artifact's SHA-256. Values that differ per deployment,
+  such as an account alias or a secret reference, arrive through the runtime binding. The claim and its hash are
+  unaffected. The host merges the two (§6.1 rule 8).
 
 A change to what a component owns, offers or depends on is therefore a new claim version in a new artifact (§8), never a
 runtime edit.
@@ -460,6 +467,13 @@ operations reach its own callers (Foundry: agent tools; Flow: workflow capabilit
    claim identity as the consumer party of its child contracts and as the consumer instance of their runtime bindings.
    The host registers an operation only when both equal its packaged identity, and invokes it as that consumer. A
    placeholder consumer is never accepted.
+8. **Configuration is packaged defaults plus deployment values (§3.10).** Before any component code runs, the host
+   builds the component's effective configuration from its packaged `META-INF/unfurl-config.yaml` and the runtime
+   binding. Every deployment key must be supplied. A packaged key can change only as its schema allows, and only
+   toward stricter values where it says `tighten`. A secret is always a `secret://` reference, never a value. The
+   binding may give a value inline (signed with the binding) or as a `config://` reference. A reference is resolved by
+   the host's configuration resolver, which may be backed by mounted files, Kubernetes ConfigMaps, or a configuration
+   service. The result is checked by the same rules and fixed for the life of the admission.
 
 ---
 
