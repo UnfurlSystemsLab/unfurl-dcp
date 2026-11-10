@@ -84,6 +84,7 @@ src/main/java/com/unfurl/dcp/
   validation/       // CrossSchemaValidator: claim<->manifest, contract<->claim, binding<->contract checks
   versioning/       // SemverRange helpers, claim/offer/contract version axes
   broker/           // CompositionBroker (the runtime composition broker)
+  host/             // in-process component host: activation SPI, host-port coverage, pinned artifacts (HLD-C §6.1) [PROPOSED]
   trust/            // ContractSigner interface, OfflineContractVerifier, TrustTier + derivation (single home)
   spi/              // service-provider points: ContractStore, ContractInvocableFactory, CapabilityRegistrar, BrokerEventSink (no concrete impls)
 
@@ -858,6 +859,8 @@ On `accept(disposition, registrar, factory, context)`, the broker:
 - Builds a single `ContractInvocable` for the contract's `Binding` by calling `factory.create(contract, binding, context)`. Where the host needs the full provider claim's offer record (e.g. for `consumer_access` enforcement), it can resolve `binding.providerCapability` against the provider `Claim` and pass the resulting `com.unfurl.dcp.claim.Offer` through the factory implementation's own context — the SPI argument is the `Binding`, not the `Offer`, to keep the SPI orthogonal to claim resolution.
 - Wraps the invocable in a `ContractInvocableAdapter` (from `contract/`) that tags every invocation with the frozen contract id plus reserved metadata keys for contract version, trust tier, and registration handle.
 - Calls `registrar.register(binding.providerCapability, adaptedInvocable, context)`. The `CapabilityRegistrar` is DCP's mutable port (defined in `spi/`); hosts implement it over their mutable capability manager/registry implementation. This keeps the substrate `CapabilityRegistry` interface read-only.
+- **Is exception-safe [proposed change].** If `register` throws, the broker calls `registrar.unregister` for that capability before rethrowing, since a registrar may have partly registered. If anything after `register` succeeds throws — today, publishing `CAPABILITY_REGISTERED` — the broker unregisters the capability, then rethrows. A failed `accept` therefore never leaves a registration without a returned handle. Unregister failures are attached as suppressed exceptions.
+- **Checks signed-body equality [proposed change].** Signature verification covers `signedContract().canonicalBytes()`, but the broker registers from the decoded `contract()`. It requires the canonical bytes of `contract()` to equal the signed bytes, refusing with `SIGNATURE_INVALID` otherwise, so a store that does not enforce this (unlike `VerifiedContracts`) cannot smuggle a tampered body past a valid signature. `present` applies the same check.
 
 `revoke(handle, registrar, context)` reverses the registration via `registrar.unregister(...)`. This is what makes the composition genuinely **dynamic**: components can be added and removed at runtime, the host's capability surface changes accordingly, but every accept/reject decision was frozen at design time.
 
@@ -935,6 +938,329 @@ Subsequent runtime calls go through the host's `CapabilityRegistry` (substrate p
 On `broker.revoke(handle, registrar, context)`: the broker calls `registrar.unregister(capabilityName, context)` for each entry in the handle and emits `CAPABILITY_REVOKED`. Components added dynamically can be removed dynamically without restarting the host.
 
 **No runtime self-heal.** If a frozen contract becomes invalid at runtime (a `RUNTIME_ASSUMPTION_VIOLATED` invalidation trigger fires from the host), the broker emits `CONTRACT_INVALIDATED` and revokes — it does NOT re-negotiate. Re-negotiation is fabric's job at the next design-time pass (HLD-C §8, settled #2).
+
+---
+
+## In-Process Component Host (HLD-C §6.1)
+
+Status: **proposed, not implemented.** This is the generic mechanism by which any runtime (Foundry, Flow, an embedding
+app) hosts a component the composition placed in-process. It sits on top of the broker and changes nothing in it. The
+worked example is the Kotak Neo read adapter hosted by Foundry as agent tools.
+
+### Why it is in DCP
+
+Every host would otherwise repeat the same steps — read frozen child contracts, verify the provider artifact and its
+packaged claim against the contract's pins, find the component's factory, check its `owner=host` needs are covered,
+then `present`/`accept` and later revoke — and each copy would drift. Only two things differ by host: which neutral host
+ports it can bind, and what shape accepted operations take for its callers. Both are parameters here.
+
+### Types (`com.unfurl.dcp.host`)
+
+```java
+/**
+ * SPI (Abstract Factory): supplied by the component, exactly one per component. Declared by a single line naming its
+ * class in META-INF/services/com.unfurl.dcp.host.ComponentActivation inside one of the component's pinned artifacts;
+ * the host reads that file as data and never uses java.util.ServiceLoader. Public no-argument constructor required.
+ * Adapts neutral host ports to the component's own ports.
+ */
+public interface ComponentActivation {
+    URI claimUri();                                   // must equal the packaged claim's identity
+    String claimVersion();
+    /** Each owner=host dependency capability this activation covers, and the host port types it needs for it. */
+    Map<String, Set<Class<?>>> hostDependencies();    // empty set = self-provided from resolved configuration
+    /** Called by the broker on accept; the context carries the validated runtime binding and bound host ports. */
+    ContractInvocableFactory factory(ActivationContext context);
+    /** The registrar shapes this component supports, e.g. a tool registrar for agent hosts. Empty if unsupported. */
+    <R extends CapabilityRegistrar> Optional<R> registrar(Class<R> shape, Party consumer);   // consumer = the host
+}
+
+/** Port: the neutral host services a host has actually bound. Never returns a default or no-op. */
+public interface HostPorts {
+    <T> Optional<T> port(Class<T> type);              // e.g. OperationAuditSink.class, ConfigResolver.class
+    Set<Class<?>> boundTypes();
+}
+
+public interface ActivationContext {
+    CompositionContract contract();
+    RuntimeBinding runtimeBinding();                  // validated against the contract by RuntimeBindingValidator
+    HostPorts host();
+}
+
+/**
+ * Value: a frozen contract whose signature verified against the host's trusted keys, whose schema validated, and whose
+ * decoded body canonicalizes to exactly its signed bytes. Only VerifiedContracts creates one; nothing else in host/
+ * accepts a bare FrozenContract or CompositionContract.
+ */
+public final class VerifiedContract {
+    public FrozenContract frozen();
+    public CompositionContract contract();            // the signed body, never a separately decoded copy
+    public Optional<ProviderArtifactPin> pin();       // read from the verified body only
+}
+
+/**
+ * Repository: the verified contract set, loaded all-or-nothing (an invalid, unsigned, duplicate or body-mismatched
+ * envelope fails the load, naming it). It is also the broker's ContractStore, so admission and broker lookup read the
+ * same verified bytes. Generalizes Foundry's DirectoryFrozenContractStore, which then delegates here.
+ */
+public final class VerifiedContracts implements ContractStore {
+    public static VerifiedContracts load(List<ContractEnvelope> envelopes, VerificationKeySet keys);
+    public static VerifiedContracts loadDirectory(Path directory, VerificationKeySet keys);   // *.json, non-recursive
+    public List<VerifiedContract> all();
+}
+
+/**
+ * Value: the provider's complete runtime artifact set from a verified child contract (HLD-C §6.1 rule 2): the
+ * claim-bearing artifact plus every companion it needs at runtime (decision D1), each with its SHA-256.
+ */
+public record ProviderArtifactPin(ArtifactPin claimArtifact, String claimHash, List<ArtifactPin> companions) { }
+public record ArtifactPin(String coordinates, String sha256) { }
+
+/**
+ * Value: the packages a component's code may resolve from the host instead of its own pinned artifacts. DCP's base
+ * set is fixed; a host may add exact package prefixes for its registrar shape (Foundry: com.unfurl.foundry.substrate.).
+ * Anything not listed must come from the component's pinned artifacts.
+ */
+public record SharedApi(Set<String> packagePrefixes, ClassLoader apiLoader) {
+    public static final Set<String> DCP_BASE = Set.of("com.unfurl.dcp.", "com.unfurl.substrate.composition.",
+            "com.unfurl.substrate.ports.", "com.unfurl.substrate.policy.", "com.unfurl.substrate.observability.");
+}
+
+/** Facade: hosts one verified set of in-process components; all-or-nothing. */
+public final class InProcessComponentHost implements AutoCloseable {
+    /** Builds its own DefaultCompositionBroker over `contracts` and `keys`, so the broker cannot see another store. */
+    public InProcessComponentHost(VerifiedContracts contracts, VerificationKeySet keys, BrokerEventSink events, HostPorts host);
+    /**
+     * Checks, covers and admits every verified contract whose provider is in-process; returns the report or throws.
+     * `host` is the host's own identity from its packaged claim (PackagedClaim.load); every admitted contract's
+     * consumer party and runtime binding consumer must equal it.
+     */
+    public <R extends CapabilityRegistrar> HostReport<R> admit(
+            Map<URI, RuntimeBinding> bindings, PinnedJarArtifacts artifacts,
+            Class<R> registrarShape, Party host, ExecutionContext startup);
+    @Override public void close();                    // rollback path below: every attempted registration is removed
+}
+
+/**
+ * Repository, in two stages so no component code runs before every check that needs none has passed.
+ * Stage 1 (data only): hash jars against pins, read packaged claims, activation declarations and class listings
+ * from the zip entries, and check the artifact rules below.
+ * Stage 2 (code): build each component's PinnedArtifactClassLoader and instantiate its activation.
+ */
+public final class PinnedJarArtifacts implements AutoCloseable {
+    public static PinnedJarArtifacts inspect(Collection<Path> jars, VerifiedContracts contracts, SharedApi shared);   // stage 1
+    public Optional<Claim> packagedClaim(ProviderArtifactPin pin);
+    public ComponentActivation activate(ProviderArtifactPin pin);                                     // stage 2
+    @Override public void close();                                                                     // closes every loader
+}
+```
+
+**Artifact rules (stage 1, from zip data only).** `inspect` takes pins only from `VerifiedContracts`. For each
+component it requires every artifact in its `ProviderArtifactPin` (claim-bearing and companions) to be present with a
+matching SHA-256 → else `COMPONENT_DEPENDENCY_MISSING` naming the coordinates; extra jars are ignored and reported. It
+reads `META-INF/unfurl-catalog.yaml` with `PackagedClaim.parse`.
+
+**Effective class set.** Every class rule below, the loader and eager loading use one definition of an artifact's
+classes for the running Java feature version `R = Runtime.version().feature()`, matching how the JDK itself reads a
+JAR:
+
+- The artifact is multi-release only if its main manifest has `Multi-Release: true`. Otherwise only
+  `META-INF/versions/**` is ignored; every other entry, including the rest of `META-INF/`, is read at its base path.
+- In a multi-release artifact, a path outside `META-INF/` has as effective entry `META-INF/versions/N/<path>` for the
+  highest integer `N` with `9 <= N <= R`, else the base `<path>`. Versioned entries with `N > R` or a non-integer `N`
+  are ignored. Paths under `META-INF/` are not versioned and always resolve to their base entry.
+- The packaged claim (`META-INF/unfurl-catalog.yaml`) and the activation declaration
+  (`META-INF/services/com.unfurl.dcp.host.ComponentActivation`) are therefore always read from their base paths. A copy
+  of either under `META-INF/versions/` is refused (`ARTIFACT_VERSIONED_METADATA`), so no reader can see a different
+  claim or activation than the host checked.
+- Of the effective `.class` paths, module descriptors (`module-info.class`, at the root or under any version) are
+  excluded: they are not classes (`ACC_MODULE`) and cannot be loaded as one. `package-info.class` entries are excluded
+  from eager loading and from the duplicate rule, as they hold package annotations and no code.
+- Each remaining effective path gives one binary class name (strip `.class`, `/` → `.`); a base entry and its
+  versioned override are the same class, not two.
+
+Using that set, it refuses:
+
+- a manifest `Class-Path` (or `Launcher-Agent-Class`) attribute in any pinned artifact → `ARTIFACT_CLASS_PATH_FORBIDDEN`,
+  since the JAR specification lets it extend the search path to unpinned files;
+- a class or resource under a `SharedApi` package prefix in any entry, base or versioned for any `N` (so a newer Java
+  version cannot later reveal a shadow) → `ARTIFACT_SHADOWS_SHARED_API`;
+- the same effective class name in two artifacts of one component → `ARTIFACT_CLASS_DUPLICATE` (each modular companion
+  carrying its own `module-info.class` is not a duplicate, since descriptors are excluded);
+- anything other than exactly one effective `ComponentActivation` declaration across the component's artifacts, or a
+  declared class outside the declaring artifact's effective class set → `COMPONENT_ACTIVATION_MISSING` /
+  `COMPONENT_ACTIVATION_DUPLICATE` / `ACTIVATION_ORIGIN_MISMATCH`.
+
+**`PinnedArtifactClassLoader` (stage 2), one per component.** Its parent is the JDK *platform* class loader, not the
+application loader, so host classes are unreachable by default. Loading is defined as:
+
+1. Classes in `java.*` and other platform modules come from the parent.
+2. A class under a `SharedApi` prefix is loaded from `shared.apiLoader()` only (the host's single copy of the API the
+   component and host exchange objects through).
+3. Every other class is defined only from the component's pinned artifacts, through the loader's own fixed URL list,
+   with each artifact opened as `new JarFile(file, true, ZipFile.OPEN_READ, Runtime.version())` so lookups select exactly
+   the effective entries enumerated in stage 1. Not found there means `ClassNotFoundException`; there is no fallback to
+   any other loader.
+4. `getResource`/`getResources` search only the pinned artifacts, so service files and other resources from the host
+   classpath are never visible.
+5. The URL list is exactly the pinned artifacts and is never extended (`addURL` is not exposed; manifest `Class-Path`
+   was refused in stage 1).
+
+**Instantiation.** `activate(pin)` loads the declared class with `Class.forName(name, false, loader)` (no static
+initialization yet) and requires its class loader to be that component's loader and its `CodeSource` location to be
+the declaring pinned artifact → else `ACTIVATION_ORIGIN_MISMATCH`. It then loads every class in the component's
+effective class sets the same way, without initialization (module descriptors and `package-info` excluded, versioned
+overrides selected for `R`), so a missing superclass or interface fails startup with `COMPONENT_DEPENDENCY_UNRESOLVED`
+before any component code runs. Only then does it call the public no-argument
+constructor. References resolved lazily later can still only resolve under rules 1–3, so they fail closed rather than
+escape the pinned set. Third-party libraries a component uses (Kotak: Jackson) are therefore either pinned companions or,
+if a host chooses to share them, `SharedApi` prefixes the host adds explicitly.
+
+Two rules that only Fabric implements today move into DCP, and Fabric delegates to them, so the composer and every host
+share one definition:
+
+- `ClaimHash.canonical(Claim)` (new, `claim/`): SHA-256 of the claim serialized as YAML with sorted map entries and
+  properties, `NON_NULL` inclusion and ISO dates, exactly as `CatalogManifestCodec.computeClaimHash` does today.
+- `Dependencies.ownerOf(String dependency)` (new, `claim/`): the `owner=` qualifier, parsed as
+  `CandidateValidator.ownerMarker` does today, and `Dependencies.isExternallyOwned` for `host`, `fabric`,
+  `customer-controlled` and `customer-*`.
+
+### Admission flow
+
+Admission runs in three stages, each over the whole set (contracts sorted by id for determinism) before the next starts.
+No component code runs until stages 0 and 1 have passed for every contract.
+
+**Stage 0 — contracts (before anything else).** `VerifiedContracts` already exists, so every contract's signature
+verified against the host's keys, its schema validated and its body equals its signed bytes. A host cannot pass
+unverified contracts: no `admit` overload takes them. The host's broker is built over this same store.
+
+**Stage 1 — data checks, no component code.** For each verified contract `c` whose provider binds in-process:
+
+1. `pin = c.pin()`; missing → `PROVIDER_PIN_MISSING`. The artifact rules above have already run for every pinned
+   artifact set (`COMPONENT_DEPENDENCY_MISSING`, `ARTIFACT_*`, activation declaration checks).
+2. `claim = artifacts.packagedClaim(pin)`, read from the hash-matched jar's zip entry; none →
+   `COMPONENT_ARTIFACT_MISSING`. Its identity must equal `c.contract.parties.provider` → else `COMPONENT_CLAIM_MISMATCH`;
+   `ClaimHash.canonical(claim)` must equal `pin.claimHash` → else `CLAIM_HASH_MISMATCH`.
+3. **Consumer is this host.** `c.contract.parties.consumer` (claim URI and version) must equal `host` → else
+   `CONSUMER_MISMATCH`, naming both identities. The composer authors the consumer party of a contract whose provider is
+   hosted in-process as the hosting service's claim identity (HLD-C §6.1 rule 7), so a contract compiled for a
+   different consumer, or with a placeholder consumer, is never registered here.
+4. `binding = bindings.get(c.contractId)` validated with `RuntimeBindingValidator` against `c.contract`; invalid or
+   disabled → `RUNTIME_BINDING_INVALID` / `RUNTIME_BINDING_DISABLED`. Its `consumer_instance` component URI and version
+   must also equal `host` → else `CONSUMER_MISMATCH`.
+5. `d = broker.present(claim, providerCapability, startup)`; require `ACCEPT` whose matched id and version equal `c` →
+   else `ADMISSION_REJECTED` carrying the broker's `DispositionReason`. (Presenting needs no component code, so it runs
+   here, before any is loaded.)
+
+**Stage 2 — activation code.** Only now are component class loaders built. For each contract:
+
+6. `activation = artifacts.activate(pin)` (one per component, reused across its operations); origin and dependency
+   failures → `ACTIVATION_ORIGIN_MISMATCH` / `COMPONENT_DEPENDENCY_UNRESOLVED`. Its `claimUri`/`claimVersion` must equal
+   the packaged claim's → else `COMPONENT_CLAIM_MISMATCH`.
+7. Coverage: for every need in `claim.dependencies.needs` whose owner is `host` (`Dependencies.ownerOf`),
+   `activation.hostDependencies()` must contain its capability and every listed type must be in `host.boundTypes()`.
+   Optional `owner=host` dependencies are covered when the activation declares them and their types are bound, and
+   otherwise left unbound. Every gap is collected → `HOST_DEPENDENCY_UNMET` listing all of them.
+8. `registrar = activation.registrar(registrarShape, host)`, one per component; empty →
+   `REGISTRAR_SHAPE_UNSUPPORTED`. The host wraps it in a `TrackingRegistrar` (below) before any use. Invocations through
+   it carry `host.claimUri` as the consumer component, which step 3 guarantees equals the contract's consumer party.
+9. `broker.accept(d, tracking, activation.factory(context(c, binding)), startup)`; keep the `RegistrationHandle`.
+
+Success returns `HostReport` with the registrars by component and one entry per admitted operation, plus the ignored
+artifacts and activations (closed world: present but not named by any verified contract).
+
+### Rollback and close
+
+A registration can exist without a returned handle: `accept` may fail after `registrar.register` has run (for example,
+the `CAPABILITY_REGISTERED` event sink throws), or `register` itself may fail after partly registering. Rollback
+therefore does not rely on handles alone:
+
+- **`TrackingRegistrar`** (Decorator over the component's registrar) records the capability name *before* delegating
+  each `register` call, so every attempted registration is known, including the one that failed.
+- **Rollback** (any failure in stage 2, and `close()`): for every recorded attempt, in reverse order, call the
+  component registrar's `unregister`; then `broker.revoke` each returned handle so revocation events are emitted.
+  Registrars must make `unregister` idempotent and must fence any handle a failed `register` created. Every step runs
+  even if an earlier one throws; failures are attached as suppressed exceptions to the one `ComponentHostException`
+  (or close failure) that is thrown. Then `artifacts.close()` closes the classloader.
+- **Broker `accept` is exception-safe** (change to `DefaultCompositionBroker`, see the broker section): if anything
+  after `registrar.register` fails, it unregisters that capability before rethrowing, and if `register` itself throws
+  it calls `unregister` before rethrowing. The tracking registrar still covers a registrar or broker that does not.
+
+### What stays with each host
+
+- Building `HostPorts` from its own bound services (Foundry: profile bindings; Flow: its runtime profile).
+- Choosing the registrar shape (Foundry: `ToolCapabilityRegistrar` from `foundry-substrate-offers`; Flow: its
+  capability registrar) and exposing accepted operations to its callers.
+- Where the artifacts, frozen contracts and runtime bindings come from (Fabric's emitted overlay), and when to close.
+
+### Neutral host ports
+
+`HostPorts` carries types from `unfurl-substrate` `substrate-ports`, never host product types:
+`PolicyEvaluator`, `TraceProvider`, `MetricsProvider` (existing) and, in `com.unfurl.substrate.ports.host`,
+`OperationAuditSink`, `SecretResolver` (moved from Foundry unchanged), `ConfigResolver` and `OperationAdmission` (new;
+substrate LLD *Neutral host ports*). A component's activation adapts these to its own ports.
+
+### Failure codes
+
+| Code | Cause |
+|---|---|
+| `CONTRACT_UNVERIFIED` | `VerifiedContracts` load: an envelope is invalid, unsigned, signed by an untrusted key, duplicated, or its body differs from its signed bytes. Nothing is admitted. |
+| `PROVIDER_PIN_MISSING` | The verified contract has no `artifactSha256`/`claimHash` pin. |
+| `COMPONENT_ARTIFACT_MISSING` | No verified artifact carries the pinned provider's claim. |
+| `COMPONENT_CLAIM_MISMATCH` / `CLAIM_HASH_MISMATCH` | The packaged claim's identity or canonical hash differs from the contract. |
+| `COMPONENT_DEPENDENCY_MISSING` | An artifact in the provider's pinned set (claim-bearing or companion) is absent or its SHA-256 differs. |
+| `ARTIFACT_CLASS_PATH_FORBIDDEN` | A pinned artifact's manifest has `Class-Path` or `Launcher-Agent-Class`. |
+| `ARTIFACT_SHADOWS_SHARED_API` | A pinned artifact contains a class or resource under a `SharedApi` prefix. |
+| `ARTIFACT_CLASS_DUPLICATE` | One class name appears in two artifacts of the same component. |
+| `ARTIFACT_VERSIONED_METADATA` | A pinned artifact has a copy of `META-INF/unfurl-catalog.yaml` or the activation declaration under `META-INF/versions/`. |
+| `COMPONENT_ACTIVATION_MISSING` / `COMPONENT_ACTIVATION_DUPLICATE` | Zero or several activation declarations across the component's artifacts. |
+| `ACTIVATION_ORIGIN_MISMATCH` | The declared class is not in the declaring artifact, or loads from another loader or location. |
+| `COMPONENT_DEPENDENCY_UNRESOLVED` | Loading a pinned class without initialization finds a superclass or interface outside the pinned set and `SharedApi`. |
+| `CONSUMER_MISMATCH` | The contract's consumer party, or its runtime binding's consumer instance, is not this host's identity. |
+| `HOST_DEPENDENCY_UNMET` | `owner=host` needs not declared by the activation or needing unbound port types; lists every gap. |
+| `RUNTIME_BINDING_INVALID` / `RUNTIME_BINDING_DISABLED` | The binding fails `RuntimeBindingValidator` for its contract, or is disabled. |
+| `REGISTRAR_SHAPE_UNSUPPORTED` | The component offers no registrar of the host's shape. |
+| `ADMISSION_REJECTED` | The broker's disposition is not `ACCEPT` or matches another contract; carries the `DispositionReason`. |
+
+### Open decisions
+
+| # | Decision | Recommendation |
+|---|---|---|
+| D1 | **Required by this design:** every artifact a component needs at runtime is pinned (`ProviderArtifactPin.companions`), since nothing else is loadable. Open is only how the composer learns the set (Kotak: `kotak-neo-http`, `kotak-neo-foundry`, Jackson). Either the component ships one bundle carrying its claim, or the catalog block names companion coordinates and the composer hashes and freezes them into the child contract (`metadata.extensions.companionArtifacts`). | Catalog-named companions: keeps modules separable and reuses the composer's pinning. Needs a Fabric design change. |
+| D2 | Where a component declares the configuration references its runtime binding must carry (Kotak: `adapterConfig`). | A general field on the offer interface in the claim (HLD-C2 §A), so composers can write and check them; needs an HLD-C2 change before code. |
+| D3 | How the composer records which selected service hosts an in-process component. Whatever it decides becomes the consumer party of that component's child contracts and the consumer instance of their runtime bindings (HLD-C §6.1 rule 7); Fabric today always writes `urn:unfurl:host@0.0.0`, which no host will accept. | Explicit in the deployment policy, inferred only when exactly one selected service can host; otherwise compile refuses. Fabric then compiles those child contracts with that service's packaged claim identity. Fabric design. |
+
+### Tests
+
+Broker-level fixtures in `testing/`: a synthetic component jar with a packaged claim, one `owner=host` need and an
+activation. Cover every failure code, all-or-nothing rollback, closed-world ignoring, revocation through the broker, and
+that a jar changed after compile is never loaded. In particular:
+
+- **No code before verification.** An activation whose constructor or static initializer records that it ran: with an
+  unsigned, untrusted-key or body-tampered contract pinning its jar, admission fails with `CONTRACT_UNVERIFIED` and the
+  activation never ran. The same holds for every stage-1 failure.
+- **No orphaned registration.** A `BrokerEventSink` that throws on `CAPABILITY_REGISTERED`, and a registrar whose
+  `register` registers and then throws: in both cases admission fails and the registrar holds no registration and no
+  live handle afterwards, both through the exception-safe broker and with a non-exception-safe broker double (the
+  tracking registrar alone).
+- **Rollback continues.** A registrar whose `unregister` throws for one capability: every other attempted registration
+  is still removed, and the thrown exception carries the failure as suppressed.
+- **Loading stays inside the pinned set.** Each refused in stage 1, before any code runs: a pinned jar whose manifest
+  `Class-Path` names an unpinned jar; a jar defining a class in `com.unfurl.dcp.`; a class duplicated across two
+  artifacts. In stage 2: an activation class that the host classpath also contains loads from the pinned jar, never the
+  host; a pinned class whose superclass exists only on the host classpath fails `COMPONENT_DEPENDENCY_UNRESOLVED`; a
+  service file present only on the host classpath is invisible to the component.
+- **Multi-release and modular jars.** A companion like Jackson, with `Multi-Release: true` and
+  `META-INF/versions/9/module-info.class`, is admitted and eagerly loaded without error. Two modular companions with their
+  own `module-info.class` are not duplicates. A class with a `META-INF/versions/11/` override loads the override on Java
+  11+ (CodeSource is still the pinned jar); an override for a version above the running one is ignored; a jar without
+  `Multi-Release: true` has its `META-INF/versions/**` entries ignored while its base packaged claim and activation
+  declaration are still read and admitted. A multi-release jar that also carries
+  `META-INF/versions/11/META-INF/unfurl-catalog.yaml` or a versioned activation declaration fails
+  `ARTIFACT_VERSIONED_METADATA`. A shared-API class present only under a version above the running one is still refused
+  as shadowing.
+- **Consumer identity.** A contract compiled with consumer `urn:unfurl:host@0.0.0`, and one whose runtime binding names
+  another consumer instance, both fail `CONSUMER_MISMATCH` before any code runs; a matching one invokes with the host
+  as consumer and passes the component's own consumer check.
 
 ---
 

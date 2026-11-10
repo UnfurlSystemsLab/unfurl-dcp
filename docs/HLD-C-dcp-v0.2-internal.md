@@ -423,6 +423,44 @@ The component's actual business API is what flows here; DCP governs the call (vi
 
 The isolation discipline (master doc §12) holds even in-process: an in-process invocation is an *optimization of the contract*, not a license to bypass it and reach into another component's internals. CI forbids cross-component internal imports; only the substrate and the contract layer are shared.
 
+### 6.1 Hosting a co-packaged component
+
+Any runtime can host a component that the composition placed in-process, without knowing the component's types. The
+mechanism is part of DCP because it is the same for every component and every host; a host adds only how accepted
+operations reach its own callers (Foundry: agent tools; Flow: workflow capabilities). The design is in the Java LLD,
+*In-Process Component Host*. The rules:
+
+1. **Only what the signed contract selected activates.** A host activates a component for an operation only when a
+   frozen child contract names that component as provider for that capability. Anything else delivered with the
+   deployment is ignored and reported, never loaded.
+2. **The artifact is the pinned one, and pins come only from verified contracts.** A child contract's
+   `metadata.extensions.artifactSha256` and `claimHash` (written by the composer at compile time) are the provider
+   artifact pin. They are trusted only after the contract's signature has verified against the host's keys and its
+   decoded body has been shown equal to its signed bytes. The pin covers the component's whole runtime artifact set,
+   not just the claim-bearing artifact. The host loads a component artifact only when its SHA-256 equals such a pin,
+   and uses only the claim packaged in that artifact (§3.10), whose canonical hash must equal `claimHash`. Component
+   classes load only from that pinned set, plus a fixed list of shared API packages the host and component exchange
+   objects through; a JAR manifest `Class-Path` or the host's own classpath can never supply them. No component code
+   runs before all of these checks pass. Nothing is fetched at runtime and no claim is built or edited.
+3. **The component adapts the host, not the reverse.** Each component artifact supplies one *activation*: its adapter
+   from neutral host ports to its own ports, its `ContractInvocableFactory`, and the registrar shapes it supports. The
+   host never imports component types.
+4. **Every `owner=host` need is covered before admission.** Each `owner=host` dependency in the packaged claim's `needs`
+   must be declared by the activation and backed by a host port the host has actually bound. Optional `owner=host`
+   dependencies are bound when the host offers them. There is no default, permissive or no-op port; an uncovered need
+   refuses the component, naming the dependency.
+5. **Admission is the broker's.** Each operation registers only through `present`/`accept` (§6 broker) with the
+   activation's factory and registrar, and only for an `ACCEPT` that matches that frozen contract. Revocation goes
+   through the broker and fences retained handles.
+6. **Failure is total and explained.** A host either admits the whole verified set or starts nothing from it, and
+   reports each refused component or operation with its reason. Rollback removes every registration that was
+   attempted, including one whose acceptance failed after the registrar was called, not only those with a returned
+   handle.
+7. **The consumer is the host.** For a component placed in-process, the composer writes the hosting service's own
+   claim identity as the consumer party of its child contracts and as the consumer instance of their runtime bindings.
+   The host registers an operation only when both equal its packaged identity, and invokes it as that consumer. A
+   placeholder consumer is never accepted.
+
 ---
 
 ## 6A. Transport bindings — DCP is transport-agnostic by design
