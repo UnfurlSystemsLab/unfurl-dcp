@@ -55,4 +55,48 @@ public record Dependencies(
         name = name.trim();
         return name.isEmpty() ? null : name;
     }
+
+    /**
+     * Parser: the {@code owner=} qualifier of a dependency URI, which says who binds the dependency when it is not a
+     * peer component in the composition (HLD-C v0.2 §3.4). The single definition shared by composers (which skip
+     * externally owned needs when matching peers) and in-process hosts (which must cover {@code owner=host} needs).
+     *
+     * <p>The first {@code owner=} parameter in the {@code ?}-separated, {@code &}-delimited qualifiers wins; its value is
+     * trimmed. Examples: {@code host.config@v1?owner=host} gives {@code host}; {@code agent.run@^0.1} gives the empty
+     * string.
+     *
+     * @param dependency a dependency URI, possibly null
+     * @return the owner, or the empty string when the URI is blank or carries no owner qualifier
+     */
+    public static String ownerOf(String dependency) {
+        if (dependency == null || dependency.isBlank()) {
+            return "";
+        }
+        int query = dependency.indexOf('?');
+        if (query < 0 || query == dependency.length() - 1) {
+            return "";
+        }
+        for (String part : dependency.substring(query + 1).split("&")) {
+            if (part.startsWith("owner=")) {
+                return part.substring("owner=".length()).trim();
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Rule: whether a dependency is bound outside the peer-component graph, so a composer must not require a selected
+     * component to offer it. Owners {@code host}, {@code fabric}, {@code customer-controlled} and any
+     * {@code customer-*} owner are external; no owner, or any other owner, is a peer dependency.
+     *
+     * @param dependency a dependency URI, possibly null
+     * @return true when {@link #ownerOf} names an external owner
+     */
+    public static boolean isExternallyOwned(String dependency) {
+        String owner = ownerOf(dependency);
+        return "host".equals(owner)
+                || "fabric".equals(owner)
+                || "customer-controlled".equals(owner)
+                || owner.startsWith("customer-");
+    }
 }

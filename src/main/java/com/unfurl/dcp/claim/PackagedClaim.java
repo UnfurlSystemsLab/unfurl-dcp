@@ -25,7 +25,7 @@ import java.util.Objects;
  *
  * <p>Only the top-level {@code claim} block is bound; the manifest's {@code catalog} block belongs to the catalog that
  * admits the artifact and is ignored here. Every claim returned has passed {@link ClaimValidator} with no errors, and
- * the reader never edits it. Hashing for pinning stays with the admitting catalog.
+ * the reader never edits it. The hash used for pinning is {@link ClaimHash#canonical}.
  */
 public final class PackagedClaim {
     /** Classpath and archive path of the catalog manifest that carries a component's claim. */

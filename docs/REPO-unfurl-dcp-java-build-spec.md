@@ -234,10 +234,12 @@ Required rule classes include:
 - `invalidate(handle, registrar, context)` emits `CONTRACT_INVALIDATED` and revokes exposed capabilities without attempting runtime self-heal or design-time renegotiation.
 - Broker events carry metadata only by default and propagate correlation ids through the broker path.
 
-### 8B) In-Process Component Host   [proposed — design only]
+### 8B) In-Process Component Host   [in progress — slices 1–2 of 5 implemented]
 Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
 - The host accepts only `VerifiedContracts` (signature against trusted keys, schema, signed-body equality, no
-  duplicates; all-or-nothing load) and builds its broker over that same store. Pins are read only from verified bodies.
+  duplicates; all-or-nothing load) and builds its broker over that same store. Pins are read only from verified bodies. **Implemented** (slice 2): `VerifiedContracts`, with `PROVIDER_PIN_INVALID` for a malformed pin.
+  A verified contract cannot change afterwards: contract records freeze their open maps deeply (`DeepImmutable`), and a
+  test tries to edit nested values through every accessor and store lookup.
 - `InProcessComponentHost.admit` activates only components named by verified child contracts, verifies each artifact's
   SHA-256 and packaged-claim hash against the pins, and registers operations only through `present`/`accept`.
 - No component code runs before every contract is verified and every data check (pins, packaged claim from the zip
@@ -265,7 +267,7 @@ Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
   only, and all `CONFIG_*` failures are collected before any component code runs. `ComponentConfigurationSchema` and
   its validator are shared with composers.
 - `ClaimHash.canonical` and `Dependencies.ownerOf`/`isExternallyOwned` are the single definitions; Fabric delegates to
-  them.
+  them. **Implemented** (slice 1 of 8B), with a golden hash test.
 - No host product types: host ports come from `substrate-ports`, registrar shapes from the host.
 
 ### 9) SPI

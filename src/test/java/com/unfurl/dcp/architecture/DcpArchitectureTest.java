@@ -23,6 +23,12 @@ class DcpArchitectureTest {
             noClasses().that().resideInAPackage("..broker..")
                     .should().dependOnClassesThat().haveFullyQualifiedName("com.unfurl.substrate.ports.CapabilityRegistry");
 
+    /** The in-process host sits on top of the broker; nothing else in DCP depends on it (LLD, In-Process Component Host). */
+    @ArchTest
+    static final ArchRule only_the_host_depends_on_the_host =
+            noClasses().that().resideOutsideOfPackage("com.unfurl.dcp.host..")
+                    .should().dependOnClassesThat().resideInAPackage("com.unfurl.dcp.host..");
+
     @ArchTest
     static final ArchRule trust_is_leaf_inside_dcp =
             noClasses().that().resideInAPackage("..trust..")
