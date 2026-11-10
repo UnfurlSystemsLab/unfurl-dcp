@@ -45,6 +45,7 @@ src/main/java/com/unfurl/dcp/
   validation/       // cross-schema validation
   versioning/       // semver compatibility helpers
   broker/           // deterministic runtime composition broker
+  host/             // in-process component host over the broker (HLD-C §6.1)   [proposed]
   spi/              // ContractStore, ContractInvocableFactory, CapabilityRegistrar, BrokerEventSink
   testing/          // lightweight fixtures for downstream repos (test scope)
 ```
@@ -226,9 +227,41 @@ Required rule classes include:
 ### 8) Runtime Composition Broker
 - `present(claim, context)` validates the claim, performs frozen-contract lookup, verifies the offline signature, and returns `ACCEPT(MATCH_FOUND)` or structured refusal reasons without model calls or network access.
 - `accept(disposition, registrar, factory, context)` accepts only `DispositionKind.ACCEPT`, re-fetches the frozen contract by id/version, re-verifies its signature, and registers exactly the contract's binding through `CapabilityRegistrar`.
+- [proposed] `accept` is exception-safe: a failure in or after `registrar.register` (including the
+  `CAPABILITY_REGISTERED` publish) unregisters that capability before rethrowing, so no registration outlives a failed
+  `accept`. `present` and `accept` require the decoded contract body to canonicalize to the signed bytes.
 - `revoke(handle, registrar, context)` unregisters exposed capabilities without renegotiation.
 - `invalidate(handle, registrar, context)` emits `CONTRACT_INVALIDATED` and revokes exposed capabilities without attempting runtime self-heal or design-time renegotiation.
 - Broker events carry metadata only by default and propagate correlation ids through the broker path.
+
+### 8B) In-Process Component Host   [proposed — design only]
+Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
+- The host accepts only `VerifiedContracts` (signature against trusted keys, schema, signed-body equality, no
+  duplicates; all-or-nothing load) and builds its broker over that same store. Pins are read only from verified bodies.
+- `InProcessComponentHost.admit` activates only components named by verified child contracts, verifies each artifact's
+  SHA-256 and packaged-claim hash against the pins, and registers operations only through `present`/`accept`.
+- No component code runs before every contract is verified and every data check (pins, packaged claim from the zip
+  entry, claim hash, runtime binding, `present`) has passed; a test activation's initializer proves it.
+- Rollback removes every attempted registration through a tracking registrar, including one whose `accept` failed
+  after `register`, continues past individual failures, and reports them as suppressed.
+- Every `owner=host` need is covered by the activation and by a bound neutral host port type, or admission fails with
+  `HOST_DEPENDENCY_UNMET` listing every gap; no default or no-op port exists.
+- Admission is all-or-nothing. `close()` uses the same rollback path.
+- No `ServiceLoader`. Each component's whole runtime artifact set is pinned; its classes load only through a
+  `PinnedArtifactClassLoader` (platform-loader parent, `SharedApi` prefixes from the host's API loader, everything else
+  from the pinned artifacts with no fallback, resources from the pinned artifacts only). Manifest `Class-Path`, shared-API
+  shadowing and duplicate classes are refused from zip data; the activation's loader and code source are checked before
+  it is instantiated.
+- Class rules, the loader and eager loading share one effective class set per artifact for the running Java version:
+  multi-release selection as the JDK applies it (only `META-INF/versions/**` ignored in ordinary jars; `META-INF/`
+  paths never versioned), module descriptors (`module-info.class`, any version) and `package-info` excluded. The
+  packaged claim and activation declaration are read only from their base `META-INF/` paths, and a versioned copy is
+  refused. Jackson's multi-release, modular jar loads cleanly as a pinned companion.
+- Every admitted contract's consumer party and runtime binding consumer equal the host's packaged identity, or
+  admission fails with `CONSUMER_MISMATCH` before any code runs.
+- `ClaimHash.canonical` and `Dependencies.ownerOf`/`isExternallyOwned` are the single definitions; Fabric delegates to
+  them.
+- No host product types: host ports come from `substrate-ports`, registrar shapes from the host.
 
 ### 9) SPI
 - `ContractStore` provides deterministic frozen-contract lookup by provider claim identity plus provider capability, and by contract id/version. Provider identity alone is not a valid runtime lookup key because a single claim can publish multiple offers such as `agent.run`, `rag.search`, and `tool.call`.
