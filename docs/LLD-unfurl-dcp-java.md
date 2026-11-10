@@ -1021,8 +1021,8 @@ public record ArtifactPin(String coordinates, String sha256) { }
  * Anything not listed must come from the component's pinned artifacts.
  */
 public record SharedApi(Set<String> packagePrefixes, ClassLoader apiLoader) {
-    public static final Set<String> DCP_BASE = Set.of("com.unfurl.dcp.", "com.unfurl.substrate.composition.",
-            "com.unfurl.substrate.ports.", "com.unfurl.substrate.policy.", "com.unfurl.substrate.observability.");
+    /** All of DCP and substrate: DCP's own types reference substrate composition, ports, policy and domain types. */
+    public static final Set<String> DCP_BASE = Set.of("com.unfurl.dcp.", "com.unfurl.substrate.");
 }
 
 /** Facade: hosts one verified set of in-process components; all-or-nothing. */
@@ -1114,6 +1114,19 @@ before any component code runs. Only then does it call the public no-argument
 constructor. References resolved lazily later can still only resolve under rules 1–3, so they fail closed rather than
 escape the pinned set. Third-party libraries a component uses (Kotak: Jackson) are therefore either pinned companions or,
 if a host chooses to share them, `SharedApi` prefixes the host adds explicitly.
+
+**The shared boundary.** Two rules keep the two class spaces from meeting:
+
+- A `SharedApi` must be closed over its own signatures. Every non-JDK type in a public signature of a shared package
+  is itself shared. That is why `DCP_BASE` is all of `com.unfurl.dcp.` and `com.unfurl.substrate.`: DCP and the
+  foundry-substrate ports reference substrate `domain` types as well as `composition`, `ports` and `policy`. A shared
+  class resolves its own dependencies, such as DCP's semver4j, Hibernate Validator and Jackson, in the host's loader,
+  so those are never companions.
+- Component code exchanges only shared or JDK types with the host. Shared methods whose signatures expose a non-shared
+  library type (DCP's Jackson-based `ContractCodec.canonicalMapper()`) are host-side only. A component that needs that
+  library brings its own copy as a companion and never passes its objects across the boundary. A DCP test enumerates
+  the public signatures of `DCP_BASE` packages and lists every non-shared type they expose, so that set stays
+  explicit. For Kotak, only `kotak-neo-deployment`, which is not a runtime artifact, calls `canonicalMapper()`.
 
 Two rules that only Fabric implements today move into DCP, and Fabric delegates to them, so the composer and every host
 share one definition:
@@ -1225,9 +1238,9 @@ substrate LLD *Neutral host ports*). A component's activation adapts these to it
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | **Required by this design:** every artifact a component needs at runtime is pinned (`ProviderArtifactPin.companions`), since nothing else is loadable. Open is only how the composer learns the set (Kotak: `kotak-neo-http`, `kotak-neo-foundry`, Jackson). Either the component ships one bundle carrying its claim, or the catalog block names companion coordinates and the composer hashes and freezes them into the child contract (`metadata.extensions.companionArtifacts`). | Catalog-named companions: keeps modules separable and reuses the composer's pinning. Needs a Fabric design change. |
-| D2 | Where a component declares the configuration references its runtime binding must carry (Kotak: `adapterConfig`). | A general field on the offer interface in the claim (HLD-C2 §A), so composers can write and check them; needs an HLD-C2 change before code. |
-| D3 | How the composer records which selected service hosts an in-process component. Whatever it decides becomes the consumer party of that component's child contracts and the consumer instance of their runtime bindings (HLD-C §6.1 rule 7); Fabric today always writes `urn:unfurl:host@0.0.0`, which no host will accept. | Explicit in the deployment policy, inferred only when exactly one selected service can host; otherwise compile refuses. Fabric then compiles those child contracts with that service's packaged claim identity. Fabric design. |
+| D1 | **Required by this design:** every artifact a component needs at runtime is pinned (`ProviderArtifactPin.companions`), since nothing else is loadable. Open is only how the composer learns the set (Kotak: `kotak-neo-http`, `kotak-neo-foundry`, Jackson). Either the component ships one bundle carrying its claim, or the catalog block names companion coordinates and the composer hashes and freezes them into the child contract (`metadata.extensions.companionArtifacts`). | Catalog-named companions. **Designed** in `unfurl-fabric/docs/HLD-in-process-component-hosting.md` §3, §5: `catalog.hosted_activation.companions`, resolved by `pom.properties` and frozen as `companionArtifacts`. |
+| D2 | Where a component declares the configuration references its runtime binding must carry (Kotak: `adapterConfig`). | A general field on the offer interface in the claim (HLD-C2 §A), so composers can write and check them; needs an HLD-C2 change before code. Proposed form: `offer_interface.details.runtime_configuration_refs: [adapterConfig]`. Fabric's input side (`--component-config`) is designed and does not depend on the form. **Still open.** |
+| D3 | How the composer records which selected service hosts an in-process component. Whatever it decides becomes the consumer party of that component's child contracts and the consumer instance of their runtime bindings (HLD-C §6.1 rule 7); Fabric today always writes `urn:unfurl:host@0.0.0`, which no host will accept. | Explicit in the deployment policy, inferred only when exactly one selected service can host; otherwise compile refuses. Fabric then compiles those child contracts with that service's packaged claim identity. **Designed** in `unfurl-deployment` HLD-D §6.2a (placement) and the Fabric HLD §4 (consumer authoring). |
 
 ### Tests
 
