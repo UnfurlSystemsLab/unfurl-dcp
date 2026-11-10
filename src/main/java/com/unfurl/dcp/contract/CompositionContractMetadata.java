@@ -21,11 +21,12 @@ public record CompositionContractMetadata(Map<String, Object> extensions) {
     public static final String EXT_CHILD_CLAIM_URIS = "childClaimUris";
 
     /**
-     * Defensive-copy constructor: keeps extension metadata immutable and treats missing metadata
-     * as an empty extension map.
+     * Defensive-copy constructor: treats missing metadata as an empty extension map and freezes it
+     * deeply ({@link DeepImmutable}), so nested values such as {@code companionArtifacts} cannot be
+     * edited through a contract after it is built or verified.
      */
     public CompositionContractMetadata {
-        extensions = extensions == null ? Map.of() : Map.copyOf(extensions);
+        extensions = DeepImmutable.map(extensions);
     }
 
     /**

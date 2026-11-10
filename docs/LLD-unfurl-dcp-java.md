@@ -943,7 +943,10 @@ On `broker.revoke(handle, registrar, context)`: the broker calls `registrar.unre
 
 ## In-Process Component Host (HLD-C §6.1)
 
-Status: **proposed, not implemented.** This is the generic mechanism by which any runtime (Foundry, Flow, an embedding
+Status: **in progress.** Implemented: `ClaimHash`, `Dependencies.ownerOf`/`isExternallyOwned` (slice 1);
+`VerifiedContracts`, `VerifiedContract`, `ContractSource`, the pin values, `HostFailureCode` and
+`ComponentHostException` (slice 2). Proposed: pinned artifacts and their loader, component configuration, and the host
+facade with rollback. This is the generic mechanism by which any runtime (Foundry, Flow, an embedding
 app) hosts a component the composition placed in-process. It sits on top of the broker and changes nothing in it. The
 worked example is the Kotak Neo read adapter hosted by Foundry as agent tools.
 
@@ -990,23 +993,37 @@ public interface ActivationContext {
 /**
  * Value: a frozen contract whose signature verified against the host's trusted keys, whose schema validated, and whose
  * decoded body canonicalizes to exactly its signed bytes. Only VerifiedContracts creates one; nothing else in host/
- * accepts a bare FrozenContract or CompositionContract.
+ * accepts a bare FrozenContract or CompositionContract. It stays equal to its signed bytes: the contract graph is
+ * deeply immutable (below), and byte arrays are copied on every read.
  */
 public final class VerifiedContract {
+    public String source();                           // the envelope name it was loaded from
     public FrozenContract frozen();
     public CompositionContract contract();            // the signed body, never a separately decoded copy
-    public Optional<ProviderArtifactPin> pin();       // read from the verified body only
+    public String id();                               // <contractId>@<contractVersion>, for diagnostics
+    /** Read from the verified body only. Empty when unpinned; a malformed pin throws PROVIDER_PIN_INVALID here. */
+    public Optional<ProviderArtifactPin> pin();
 }
+
+/** Value: one envelope's bytes and the name failures report (typically its file name). Carries no trust. */
+public record ContractSource(String name, byte[] bytes) { }
 
 /**
  * Repository: the verified contract set, loaded all-or-nothing (an invalid, unsigned, duplicate or body-mismatched
- * envelope fails the load, naming it). It is also the broker's ContractStore, so admission and broker lookup read the
- * same verified bytes. Generalizes Foundry's DirectoryFrozenContractStore, which then delegates here.
+ * envelope fails the load with CONTRACT_UNVERIFIED, naming it). It is also the broker's ContractStore, so admission and
+ * broker lookup read the same verified bytes. Generalizes Foundry's DirectoryFrozenContractStore, which delegates here.
  */
 public final class VerifiedContracts implements ContractStore {
-    public static VerifiedContracts load(List<ContractEnvelope> envelopes, VerificationKeySet keys);
-    public static VerifiedContracts loadDirectory(Path directory, VerificationKeySet keys);   // *.json, non-recursive
-    public List<VerifiedContract> all();
+    public static VerifiedContracts load(List<ContractSource> sources, VerificationKeySet keys);
+    public static VerifiedContracts loadDirectory(Path directory, VerificationKeySet keys);   // *.json, non-recursive, name order
+    public List<VerifiedContract> all();                                                       // ordered by contract id, then version
+    public Optional<VerifiedContract> verified(URI contractId, String contractVersion);
+}
+
+/** The single failure type: one HostFailureCode (table below) and the subject it concerns. */
+public final class ComponentHostException extends RuntimeException {
+    public HostFailureCode code();
+    public String subject();
 }
 
 /**
@@ -1014,7 +1031,9 @@ public final class VerifiedContracts implements ContractStore {
  * claim-bearing artifact plus every companion it needs at runtime (decision D1), each with its SHA-256.
  */
 public record ProviderArtifactPin(ArtifactPin claimArtifact, String claimHash, List<ArtifactPin> companions) { }
-public record ArtifactPin(String coordinates, String sha256) { }
+public record ArtifactPin(String coordinates, String sha256) { }   // sha256: 64 lower-case hex
+// Read from metadata.extensions: artifactCoordinates, artifactSha256, claimHash (all three, or none = unpinned) and
+// optional companionArtifacts: [{ coordinates, sha256 }]. Coordinates are unique across the set.
 
 /**
  * Value: the packages a component's code may resolve from the host instead of its own pinned artifacts. DCP's base
@@ -1054,6 +1073,14 @@ public final class PinnedJarArtifacts implements AutoCloseable {
     @Override public void close();                                                                     // closes every loader
 }
 ```
+
+**Contracts are deeply immutable.** `Transport.details` and `CompositionContractMetadata.extensions` are the only
+open-ended maps in a contract. Their records copy them through `contract/DeepImmutable`: nested maps, lists and sets
+become unmodifiable copies that share nothing with the source (nested `null`s are kept; a top-level `null` value is
+still rejected). A shallow `Map.copyOf` is not enough, because a holder could edit a nested value, such as a
+`companionArtifacts` hash, and every later read, including the broker's store lookups, would return a body that no
+longer matches its signed bytes. Values other than maps and collections must be immutable; a contract decoded by
+`ContractCodec` holds only strings, numbers and booleans there.
 
 **Artifact rules (stage 1, from zip data only).** `inspect` takes pins only from `VerifiedContracts`. For each
 component it requires every artifact in its `ProviderArtifactPin` (claim-bearing and companions) to be present with a
@@ -1129,14 +1156,16 @@ if a host chooses to share them, `SharedApi` prefixes the host adds explicitly.
   the public signatures of `DCP_BASE` packages and lists every non-shared type they expose, so that set stays
   explicit. For Kotak, only `kotak-neo-deployment`, which is not a runtime artifact, calls `canonicalMapper()`.
 
-Two rules that only Fabric implements today move into DCP, and Fabric delegates to them, so the composer and every host
-share one definition:
+Two rules that only Fabric implemented have moved into DCP (**implemented**), and Fabric delegates to them, so the
+composer and every host share one definition:
 
-- `ClaimHash.canonical(Claim)` (new, `claim/`): SHA-256 of the claim serialized as YAML with sorted map entries and
-  properties, `NON_NULL` inclusion and ISO dates, exactly as `CatalogManifestCodec.computeClaimHash` does today.
-- `Dependencies.ownerOf(String dependency)` (new, `claim/`): the `owner=` qualifier, parsed as
-  `CandidateValidator.ownerMarker` does today, and `Dependencies.isExternallyOwned` for `host`, `fabric`,
-  `customer-controlled` and `customer-*`.
+- `ClaimHash.canonical(Claim)` (`claim/`): lower-case hex SHA-256 of the claim serialized as YAML with sorted map
+  entries and properties, line splitting and the document marker off, `NON_NULL` inclusion and ISO dates, using record
+  component names — byte for byte what Fabric's `CatalogManifestCodec.computeClaimHash` produced (checked on all 28
+  claims reachable to the build before the switch). `ClaimHashTest` pins it with a golden value; changing it is a
+  breaking protocol change.
+- `Dependencies.ownerOf(String dependency)` (`claim/`): the first `owner=` qualifier, trimmed, or `""`; and
+  `Dependencies.isExternallyOwned` for `host`, `fabric`, `customer-controlled` and `customer-*`.
 
 ### Component configuration (HLD-C §3.10, §6.1 rule 8) [proposed]
 
@@ -1241,7 +1270,7 @@ unverified contracts: no `admit` overload takes them. The host's broker is built
 
 **Stage 1 — data checks, no component code.** For each verified contract `c` whose provider binds in-process:
 
-1. `pin = c.pin()`; missing → `PROVIDER_PIN_MISSING`. The artifact rules above have already run for every pinned
+1. `pin = c.pin()`; missing → `PROVIDER_PIN_MISSING`, malformed → `PROVIDER_PIN_INVALID`. The artifact rules above have already run for every pinned
    artifact set (`COMPONENT_DEPENDENCY_MISSING`, `ARTIFACT_*`, activation declaration checks).
 2. `claim = artifacts.packagedClaim(pin)`, read from the hash-matched jar's zip entry; none →
    `COMPONENT_ARTIFACT_MISSING`. Its identity must equal `c.contract.parties.provider` → else `COMPONENT_CLAIM_MISMATCH`;
@@ -1313,6 +1342,7 @@ substrate LLD *Neutral host ports*). A component's activation adapts these to it
 |---|---|
 | `CONTRACT_UNVERIFIED` | `VerifiedContracts` load: an envelope is invalid, unsigned, signed by an untrusted key, duplicated, or its body differs from its signed bytes. Nothing is admitted. |
 | `PROVIDER_PIN_MISSING` | The verified contract has no `artifactSha256`/`claimHash` pin. |
+| `PROVIDER_PIN_INVALID` | The pin is present but partial, mistyped, not a lower-case SHA-256, or repeats coordinates, so it pins nothing. |
 | `COMPONENT_ARTIFACT_MISSING` | No verified artifact carries the pinned provider's claim. |
 | `COMPONENT_CLAIM_MISMATCH` / `CLAIM_HASH_MISMATCH` | The packaged claim's identity or canonical hash differs from the contract. |
 | `COMPONENT_DEPENDENCY_MISSING` | An artifact in the provider's pinned set (claim-bearing or companion) is absent or its SHA-256 differs. |
