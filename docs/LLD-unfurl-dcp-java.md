@@ -984,6 +984,7 @@ public interface ActivationContext {
     CompositionContract contract();
     RuntimeBinding runtimeBinding();                  // validated against the contract by RuntimeBindingValidator
     HostPorts host();
+    EffectiveConfiguration configuration();           // packaged defaults merged with deployment values (below)
 }
 
 /**
@@ -1068,10 +1069,10 @@ JAR:
 - In a multi-release artifact, a path outside `META-INF/` has as effective entry `META-INF/versions/N/<path>` for the
   highest integer `N` with `9 <= N <= R`, else the base `<path>`. Versioned entries with `N > R` or a non-integer `N`
   are ignored. Paths under `META-INF/` are not versioned and always resolve to their base entry.
-- The packaged claim (`META-INF/unfurl-catalog.yaml`) and the activation declaration
-  (`META-INF/services/com.unfurl.dcp.host.ComponentActivation`) are therefore always read from their base paths. A copy
-  of either under `META-INF/versions/` is refused (`ARTIFACT_VERSIONED_METADATA`), so no reader can see a different
-  claim or activation than the host checked.
+- The packaged claim (`META-INF/unfurl-catalog.yaml`), the packaged configuration (`META-INF/unfurl-config.yaml`) and
+  the activation declaration (`META-INF/services/com.unfurl.dcp.host.ComponentActivation`) are therefore always read
+  from their base paths. A copy of any of them under `META-INF/versions/` is refused (`ARTIFACT_VERSIONED_METADATA`), so
+  no reader can see a different claim, configuration or activation than the host checked.
 - Of the effective `.class` paths, module descriptors (`module-info.class`, at the root or under any version) are
   excluded: they are not classes (`ACC_MODULE`) and cannot be loaded as one. `package-info.class` entries are excluded
   from eager loading and from the duplicate rule, as they hold package annotations and no code.
@@ -1137,6 +1138,90 @@ share one definition:
   `CandidateValidator.ownerMarker` does today, and `Dependencies.isExternallyOwned` for `host`, `fabric`,
   `customer-controlled` and `customer-*`.
 
+### Component configuration (HLD-C §3.10, §6.1 rule 8) [proposed]
+
+A component's configuration has three layers, like a packaged `application.yml` overridden by external configuration,
+except that the component, not the deployment, decides what may be overridden:
+
+| Layer | Where | Holds | Changes with |
+|---|---|---|---|
+| Packaged | `META-INF/unfurl-config.yaml` in the claim-bearing artifact | the schema of every key, and defaults for `source: packaged` keys | a new artifact, so a new pin, recompile and re-sign |
+| Deployment | the runtime binding's `configuration.values` (inline, signed with the binding) or `configuration.config_refs` (a `config://` reference) | `source: deployment` keys, and tightened packaged keys | a new binding revision, or the referenced value |
+| Effective | `ActivationContext.configuration()` | the merge, validated | admission, and only admission |
+
+**The packaged file.** It is read from the artifact's base `META-INF/` path (never versioned; a copy under
+`META-INF/versions/` is `ARTIFACT_VERSIONED_METADATA`), by the same zip-data read as the packaged claim. Kotak:
+
+```yaml
+config_version: 1
+schema:
+  portfolioBase: { type: https-uri, source: packaged }               # no `override`: fixed
+  tradingBase:   { type: https-uri, source: packaged }
+  allowedHosts:  { type: list<host>, source: packaged }
+  currency:      { type: iso-currency, source: packaged }
+  timeoutMs:     { type: integer, min: 1, max: 60000, source: packaged, override: tighten, stricter: lower }
+  maxBytes:      { type: integer, min: 128, max: 16777216, source: packaged, override: tighten, stricter: lower }
+  maxRows:       { type: integer, min: 1, max: 100000, source: packaged, override: tighten, stricter: lower }
+  accountRef:    { type: string, max_length: 128, source: deployment }
+  sessionRef:    { type: secret-ref, source: deployment }
+defaults:
+  portfolioBase: https://<kotak-portfolio-host>
+  tradingBase:   https://<kotak-trading-host>
+  allowedHosts:  [<kotak-portfolio-host>, <kotak-trading-host>]
+  currency:      INR
+  timeoutMs:     30000
+  maxBytes:      1048576
+  maxRows:       10000
+```
+
+- Types: `string`, `integer`, `boolean`, `https-uri`, `host`, `iso-currency`, `duration`, `list<T>`, `secret-ref`.
+  `min`/`max`/`max_length` bound them.
+- `source: packaged` requires a default that satisfies the schema. `source: deployment` forbids one.
+- `override` is absent (fixed), `tighten` (only toward `stricter`: `lower` or `higher`; for a list, a subset), or
+  `replace` (any valid value). `replace` must be explicit, so widening a security-relevant value is always a visible
+  choice by the component author.
+- A `secret-ref` value is always a `secret://` reference, passed through unresolved. The component resolves it through
+  `SecretResolver` when it uses it, so no secret is ever materialized into configuration.
+
+A component with no configuration ships no file, and its binding's `values`/`config_refs` are passed through as today.
+
+**Where deployment values come from.** A deployment key or override is given either inline in `configuration.values`
+or as a reference in `configuration.config_refs`, never both. A reference is resolved by the host's bound
+`ConfigResolver` at admission, before any component code runs; the resolved document must be exactly `{ value: … }`. So
+the source is the host's choice and DCP is indifferent to it:
+
+| Store | How it reaches `ConfigResolver` |
+|---|---|
+| Files on the host, e.g. a Kubernetes ConfigMap or Secret mounted as a volume | A file-backed resolver, such as Foundry's `deployment-config-resolver`. The ConfigMap is just files, so no Kubernetes client is needed. |
+| Kubernetes API, Vault, Azure App Configuration, AWS Parameter Store, Spring Cloud Config | A host-contributed resolver adapter (Foundry: `FoundryAdapterFactoryContributor`). |
+
+An inline value is covered by the binding's signature, so changing it takes a new binding revision. A referenced value
+can change in its store without one. It is still checked by every rule below, so a ConfigMap edit can tighten
+`maxRows` but cannot redirect `portfolioBase`, widen `allowedHosts` or inline a secret. A deployment that wants every
+value under signature uses inline values only.
+
+**Merge and checks (stage 1, host code only).** For each key in the schema:
+
+| Check | Failure |
+|---|---|
+| A `source: deployment` key has a value. | `CONFIG_REQUIRED_MISSING` |
+| A key is not given both inline and as a reference. | `CONFIG_SOURCE_AMBIGUOUS` |
+| A deployment value names a key in the schema. | `CONFIG_KEY_UNKNOWN` |
+| A packaged key without `override` is not overridden. | `CONFIG_KEY_FIXED` |
+| A `tighten` override is not looser than the packaged default. | `CONFIG_OVERRIDE_WIDENS` |
+| A `secret-ref` is a `secret://` reference. | `CONFIG_SECRET_INLINE` |
+| A reference resolves to exactly `{ value: … }`. | `CONFIG_REF_UNRESOLVED` |
+| Every value satisfies its type and bounds. | `CONFIG_INVALID` |
+
+All failures are collected, so one run lists every bad key. The result is an immutable `EffectiveConfiguration` (typed
+values, plus each key's origin: `packaged`, `inline` or `reference` with its resolver revision). It is reported in
+`HostReport` and audited without values for `secret-ref` keys. It is fixed for the admission. A changed reference takes
+effect at the next admission, which is a restart, because the admitted set never changes underneath a running
+component.
+
+Composers read the same file at catalog scan, so they can refuse a missing deployment key before writing bindings. They
+reuse DCP's `ComponentConfigurationSchema` and validator, so composer and host apply one rule set.
+
 ### Admission flow
 
 Admission runs in three stages, each over the whole set (contracts sorted by id for determinism) before the next starts.
@@ -1159,7 +1244,9 @@ unverified contracts: no `admit` overload takes them. The host's broker is built
    different consumer, or with a placeholder consumer, is never registered here.
 4. `binding = bindings.get(c.contractId)` validated with `RuntimeBindingValidator` against `c.contract`; invalid or
    disabled → `RUNTIME_BINDING_INVALID` / `RUNTIME_BINDING_DISABLED`. Its `consumer_instance` component URI and version
-   must also equal `host` → else `CONSUMER_MISMATCH`.
+   must also equal `host` → else `CONSUMER_MISMATCH`. Then the effective configuration is built from the packaged
+   `META-INF/unfurl-config.yaml` and the binding (*Component configuration*), resolving references through the host's
+   `ConfigResolver`; any failure → the `CONFIG_*` codes, all collected.
 5. `d = broker.present(claim, providerCapability, startup)`; require `ACCEPT` whose matched id and version equal `c` →
    else `ADMISSION_REJECTED` carrying the broker's `DispositionReason`. (Presenting needs no component code, so it runs
    here, before any is loaded.)
@@ -1224,11 +1311,12 @@ substrate LLD *Neutral host ports*). A component's activation adapts these to it
 | `ARTIFACT_CLASS_PATH_FORBIDDEN` | A pinned artifact's manifest has `Class-Path` or `Launcher-Agent-Class`. |
 | `ARTIFACT_SHADOWS_SHARED_API` | A pinned artifact contains a class or resource under a `SharedApi` prefix. |
 | `ARTIFACT_CLASS_DUPLICATE` | One class name appears in two artifacts of the same component. |
-| `ARTIFACT_VERSIONED_METADATA` | A pinned artifact has a copy of `META-INF/unfurl-catalog.yaml` or the activation declaration under `META-INF/versions/`. |
+| `ARTIFACT_VERSIONED_METADATA` | A pinned artifact has a copy of `META-INF/unfurl-catalog.yaml`, `META-INF/unfurl-config.yaml` or the activation declaration under `META-INF/versions/`. |
 | `COMPONENT_ACTIVATION_MISSING` / `COMPONENT_ACTIVATION_DUPLICATE` | Zero or several activation declarations across the component's artifacts. |
 | `ACTIVATION_ORIGIN_MISMATCH` | The declared class is not in the declaring artifact, or loads from another loader or location. |
 | `COMPONENT_DEPENDENCY_UNRESOLVED` | Loading a pinned class without initialization finds a superclass or interface outside the pinned set and `SharedApi`. |
 | `CONSUMER_MISMATCH` | The contract's consumer party, or its runtime binding's consumer instance, is not this host's identity. |
+| `CONFIG_*` | `REQUIRED_MISSING`, `SOURCE_AMBIGUOUS`, `KEY_UNKNOWN`, `KEY_FIXED`, `OVERRIDE_WIDENS`, `SECRET_INLINE`, `REF_UNRESOLVED`, `INVALID` (*Component configuration*). |
 | `HOST_DEPENDENCY_UNMET` | `owner=host` needs not declared by the activation or needing unbound port types; lists every gap. |
 | `RUNTIME_BINDING_INVALID` / `RUNTIME_BINDING_DISABLED` | The binding fails `RuntimeBindingValidator` for its contract, or is disabled. |
 | `REGISTRAR_SHAPE_UNSUPPORTED` | The component offers no registrar of the host's shape. |
@@ -1239,7 +1327,7 @@ substrate LLD *Neutral host ports*). A component's activation adapts these to it
 | # | Decision | Recommendation |
 |---|---|---|
 | D1 | **Required by this design:** every artifact a component needs at runtime is pinned (`ProviderArtifactPin.companions`), since nothing else is loadable. Open is only how the composer learns the set (Kotak: `kotak-neo-http`, `kotak-neo-foundry`, Jackson). Either the component ships one bundle carrying its claim, or the catalog block names companion coordinates and the composer hashes and freezes them into the child contract (`metadata.extensions.companionArtifacts`). | Catalog-named companions. **Designed** in `unfurl-fabric/docs/HLD-in-process-component-hosting.md` §3, §5: `catalog.hosted_activation.companions`, resolved by `pom.properties` and frozen as `companionArtifacts`. |
-| D2 | Where a component declares the configuration references its runtime binding must carry (Kotak: `adapterConfig`). | A general field on the offer interface in the claim (HLD-C2 §A), so composers can write and check them; needs an HLD-C2 change before code. Proposed form: `offer_interface.details.runtime_configuration_refs: [adapterConfig]`. Fabric's input side (`--component-config`) is designed and does not depend on the form. **Still open.** |
+| D2 | Where a component declares the configuration references its runtime binding must carry (Kotak: `adapterConfig`). | **Resolved:** a packaged `META-INF/unfurl-config.yaml` (schema and defaults) beside the claim, merged with the binding's deployment values (*Component configuration*). The claim is unchanged and no HLD-C2 change is needed. This replaces the earlier `runtime_configuration_refs` proposal. |
 | D3 | How the composer records which selected service hosts an in-process component. Whatever it decides becomes the consumer party of that component's child contracts and the consumer instance of their runtime bindings (HLD-C §6.1 rule 7); Fabric today always writes `urn:unfurl:host@0.0.0`, which no host will accept. | Explicit in the deployment policy, inferred only when exactly one selected service can host; otherwise compile refuses. Fabric then compiles those child contracts with that service's packaged claim identity. **Designed** in `unfurl-deployment` HLD-D §6.2a (placement) and the Fabric HLD §4 (consumer authoring). |
 
 ### Tests
@@ -1271,6 +1359,12 @@ that a jar changed after compile is never loaded. In particular:
   `META-INF/versions/11/META-INF/unfurl-catalog.yaml` or a versioned activation declaration fails
   `ARTIFACT_VERSIONED_METADATA`. A shared-API class present only under a version above the running one is still refused
   as shadowing.
+- **Configuration.** Kotak-like schema: binding with `accountRef` and `sessionRef` only → effective config equals the
+  packaged defaults plus those two; `maxRows: 2000` accepted and `50000` refused (`CONFIG_OVERRIDE_WIDENS`);
+  `portfolioBase` override refused (`CONFIG_KEY_FIXED`); `sessionRef` given as a plain string refused
+  (`CONFIG_SECRET_INLINE`); `maxRows` both inline and as a reference refused; an unknown key refused; a missing
+  `accountRef` and a bad `maxBytes` reported together. A `config_refs` value resolved through a file resolver over a
+  mounted directory works, and its revision appears in the report. No component code runs on any of these failures.
 - **Consumer identity.** A contract compiled with consumer `urn:unfurl:host@0.0.0`, and one whose runtime binding names
   another consumer instance, both fail `CONSUMER_MISMATCH` before any code runs; a matching one invokes with the host
   as consumer and passes the component's own consumer check.

@@ -259,6 +259,11 @@ Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
   refused. Jackson's multi-release, modular jar loads cleanly as a pinned companion.
 - Every admitted contract's consumer party and runtime binding consumer equal the host's packaged identity, or
   admission fails with `CONSUMER_MISMATCH` before any code runs.
+- Component configuration: `META-INF/unfurl-config.yaml` (schema and packaged defaults, base path only) merged with the
+  binding's inline values and `config_refs` (resolved through the host's `ConfigResolver`) into an immutable
+  `EffectiveConfiguration`. Fixed keys can't change, `tighten` overrides can't widen, secrets are `secret://` references
+  only, and all `CONFIG_*` failures are collected before any component code runs. `ComponentConfigurationSchema` and
+  its validator are shared with composers.
 - `ClaimHash.canonical` and `Dependencies.ownerOf`/`isExternallyOwned` are the single definitions; Fabric delegates to
   them.
 - No host product types: host ports come from `substrate-ports`, registrar shapes from the host.
