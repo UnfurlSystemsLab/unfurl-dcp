@@ -159,6 +159,14 @@ class InProcessComponentHostTest {
 
         assertThat(HostedSwitches.constructed).hasValue(1);
         assertThat(report.registrars()).containsOnlyKeys("urn:provider@1.0.0");
+        // The component's scope runs host calls with the component's pinned loader as context loader, and restores the
+        // caller's after. The registrar's own class is shared test code here, so its loader is the host's: only the scope
+        // knows the component's loader.
+        ClassLoader caller = Thread.currentThread().getContextClassLoader();
+        ClassLoader inside = report.scopes().get("urn:provider@1.0.0").call(() -> Thread.currentThread().getContextClassLoader());
+        assertThat(inside.getName()).startsWith("dcp-component:");
+        assertThat(report.registrars().get("urn:provider@1.0.0").getClass().getClassLoader()).isNotSameAs(inside);
+        assertThat(Thread.currentThread().getContextClassLoader()).isSameAs(caller);
         assertThat(report.operations()).extracting(HostReport.AdmittedOperation::capability).containsExactly("tool.a", "tool.b");
         assertThat(report.ignoredArtifacts()).containsExactly("stray.jar");
         assertThat(report.notHostedContracts()).containsExactly("urn:contract:remote@1.0.0");
@@ -298,6 +306,19 @@ class InProcessComponentHostTest {
         }
     }
 
+    /** An audit sink that fails on the broker's first event refuses admission with a code, before any component code. */
+    @Test
+    void anEventSinkFailingDuringPresentIsAnAdmissionRefusal() throws Exception {
+        Setup setup = new Setup();
+        setup.failPresented = true;
+        assertThatThrownBy(() -> setup.host().admit(setup.bindings(), setup.inspect(), TestToolRegistrar.class, HOST, STARTUP))
+                .isInstanceOfSatisfying(ComponentHostException.class, e -> {
+                    assertThat(e.code()).isEqualTo(HostFailureCode.ADMISSION_REJECTED);
+                    assertThat(e.getCause()).hasMessage("audit sink is down");
+                });
+        assertThat(HostedSwitches.constructed).hasValue(0);
+    }
+
     /** Rollback continues past a failing unregister and reports it as suppressed. */
     @Test
     void rollbackContinuesPastAFailingUnregister() throws Exception {
@@ -394,6 +415,7 @@ class InProcessComponentHostTest {
         private boolean remoteContract;
         private boolean exceptionSafeBroker = true;
         private String failEventFor;
+        private boolean failPresented;
         private HostPorts ports = ports(Map.of(OperationAuditSink.class, (OperationAuditSink) (event, context) -> { }));
         private ProviderArtifactPin pin;
         private VerifiedContracts contracts;
@@ -459,6 +481,7 @@ class InProcessComponentHostTest {
             build();
             BrokerEventSink sink = (event, context) -> {
                 events.add(event);
+                if (failPresented && event.type() == BrokerEventType.CLAIM_PRESENTED) throw new IllegalStateException("audit sink is down");
                 if (event.type() == BrokerEventType.CAPABILITY_REGISTERED && event.capabilityName().equals(failEventFor)) {
                     throw new IllegalStateException("audit sink is down");
                 }

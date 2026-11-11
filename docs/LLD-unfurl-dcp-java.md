@@ -1300,6 +1300,15 @@ verify the payload hash and requested release/tenant/environment/revision, then 
 protected overlay. The proposed host does not consume that signed index itself. A read-only mount restricts runtime
 writes but does not authenticate the source. An unauthenticated overlay must not be provisioned as trusted input.
 
+**The binding document (`runtimebinding/RuntimeBindingCodec`, implemented).** Bindings travel as one YAML document,
+`{ runtime_binding_set: { root_binding_id, generated_at, source_signed_contract, runtime_bindings: [...] } }`, in
+snake_case. `RuntimeBindingCodec.read` is strict: exactly one document with unique keys, no field the model does not
+define, and unique binding and contract ids (`RuntimeBindingSet`). `root_binding_id` is absent in a host overlay, which
+holds only that host bindings. `write` is deterministic (sorted properties, nulls omitted, number-like strings
+quoted). A host reads its overlay with this codec and takes `RuntimeBindingSet.byContractId()` to `admit`. Fabric still
+writes the document with its own mapper and parses it as a tree in `assembly-bind`; both delegate here when Fabric
+implements hosted bindings (Fabric HLD-in-process-component-hosting §6).
+
 Changing an inline value takes a new provisioned binding revision. A referenced value can change in its store without
 one. It is still checked by every rule below, so a ConfigMap edit can tighten `maxRows` but cannot redirect
 `portfolioBase`, widen `allowedHosts` or inline a secret. Inline values have cryptographic integrity only when the
@@ -1418,6 +1427,7 @@ Success returns `HostReport`:
 ```java
 public record HostReport<R extends CapabilityRegistrar>(
         Map<String, R> registrars,              // by component, "<claimUri>@<claimVersion>"; the component's own registrar
+        Map<String, ComponentScope> scopes,     // same keys: run every call into the registrar, and into what it returns, here
         List<AdmittedOperation> operations,     // one per admitted contract, ordered by contract id
         List<String> ignoredArtifacts,          // delivered jars no hosted contract pins; never loaded (closed world)
         List<String> notHostedContracts) {      // verified contracts whose transport is not IN_PROCESS
@@ -1441,7 +1451,8 @@ to `admit` and closes it on failure and on `close()`.
   `CONFIG_*` code, whose message lists every failure, and whose cause is the `ComponentConfigurationException` holding
   them all.
 - A broker refusal in `present`, a `BrokerException` from `accept`, or a failure of a host collaborator inside
-  `accept` (such as the broker's event sink) is `ADMISSION_REJECTED`.
+  `present` or `accept` (such as the broker's event sink) is `ADMISSION_REJECTED`. `admit` therefore throws only
+  `ComponentHostException`, whatever fails.
 - Component code that throws during admission (an activation method, its factory, or its registrar's `register`), or
   returns `null` where a value is required, is `COMPONENT_ACTIVATION_FAILED`.
 
@@ -1450,6 +1461,11 @@ loader around every call it makes into component code: the activation's methods,
 invocation of the returned `ContractInvocable` (a Decorator added before the broker's own adapter), and the registrar's
 `register`/`unregister`. A host that calls shape-specific registrar methods itself reaches component logic only through
 that decorated invocable.
+
+**The host's own calls.** DCP scopes what it calls (activation, factory, invocables, `register`/`unregister`), but a
+host also calls its registrar shape's own methods, such as a tool registrar's `definitions` and `executor`, and the
+objects they return. It runs each of those through the component's `ComponentScope` from `HostReport.scopes()`.
+Only DCP knows the component's loader; the registrar's class may come from shared code.
 
 **Testing seam.** A package-private constructor takes a `CompositionBroker`, so tests can run the host over a broker
 double that is not exception-safe and prove the tracking registrar alone leaves no registration behind.
