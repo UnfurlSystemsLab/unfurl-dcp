@@ -57,14 +57,16 @@ public record ProviderArtifactPin(ArtifactPin claimArtifact, String claimHash, L
     }
 
     /**
-     * Parser: reads the pin from verified contract extensions.
+     * Parser: reads the pin from verified contract extensions. Public so deployment tooling that delivers a hosted
+     * component's artifacts (the emitter's admitted-component overlay, HLD-E §4.0b) selects exactly the set the host
+     * will require, by the same rule.
      *
      * @param extensions the contract's {@code metadata.extensions}
      * @return empty when the contract pins no provider artifact ({@code artifactSha256} and {@code claimHash} both
      *         absent); the pin otherwise
      * @throws IllegalArgumentException when a pin is present but partial, mistyped or malformed
      */
-    static Optional<ProviderArtifactPin> fromExtensions(Map<String, Object> extensions) {
+    public static Optional<ProviderArtifactPin> fromExtensions(Map<String, Object> extensions) {
         Object sha = extensions.get(EXT_SHA256);
         Object claimHash = extensions.get(EXT_CLAIM_HASH);
         if (sha == null && claimHash == null) return Optional.empty();

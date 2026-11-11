@@ -1036,6 +1036,8 @@ public record ProviderArtifactPin(ArtifactPin claimArtifact, String claimHash, L
 public record ArtifactPin(String coordinates, String sha256) { }   // sha256: 64 lower-case hex
 // Read from metadata.extensions: artifactCoordinates, artifactSha256, claimHash (all three, or none = unpinned) and
 // optional companionArtifacts: [{ coordinates, sha256 }]. Coordinates are unique across the set.
+// public static Optional<ProviderArtifactPin> fromExtensions(Map<String,Object> extensions): the one parser, also used
+// by deployment tooling that delivers the pinned artifacts (unfurl-deploy-emitter HLD-E §4.0b).
 
 /**
  * Value: the packages a component's code may resolve from the host instead of its own pinned artifacts. DCP's base
