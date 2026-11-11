@@ -859,7 +859,7 @@ On `accept(disposition, registrar, factory, context)`, the broker:
 - Builds a single `ContractInvocable` for the contract's `Binding` by calling `factory.create(contract, binding, context)`. Where the host needs the full provider claim's offer record (e.g. for `consumer_access` enforcement), it can resolve `binding.providerCapability` against the provider `Claim` and pass the resulting `com.unfurl.dcp.claim.Offer` through the factory implementation's own context — the SPI argument is the `Binding`, not the `Offer`, to keep the SPI orthogonal to claim resolution.
 - Wraps the invocable in a `ContractInvocableAdapter` (from `contract/`) that tags every invocation with the frozen contract id plus reserved metadata keys for contract version, trust tier, and registration handle.
 - Calls `registrar.register(binding.providerCapability, adaptedInvocable, context)`. The `CapabilityRegistrar` is DCP's mutable port (defined in `spi/`); hosts implement it over their mutable capability manager/registry implementation. This keeps the substrate `CapabilityRegistry` interface read-only.
-- **Is exception-safe [proposed change].** If `register` throws, the broker calls `registrar.unregister` for that capability before rethrowing, since a registrar may have partly registered. If anything after `register` succeeds throws — today, publishing `CAPABILITY_REGISTERED` — the broker unregisters the capability, then rethrows. A failed `accept` therefore never leaves a registration without a returned handle. Unregister failures are attached as suppressed exceptions.
+- **Is exception-safe [implemented].** If `register` throws, the broker calls `registrar.unregister` for that capability before rethrowing, since a registrar may have partly registered. If anything after `register` succeeds throws — today, publishing `CAPABILITY_REGISTERED` — the broker unregisters the capability, then rethrows. A failed `accept` therefore never leaves a registration without a returned handle. Unregister failures are attached as suppressed exceptions.
 - **Checks signed-body equality [proposed change].** Signature verification covers `signedContract().canonicalBytes()`, but the broker registers from the decoded `contract()`. It requires the canonical bytes of `contract()` to equal the signed bytes, refusing with `SIGNATURE_INVALID` otherwise, so a store that does not enforce this (unlike `VerifiedContracts`) cannot smuggle a tampered body past a valid signature. `present` applies the same check.
 
 `revoke(handle, registrar, context)` reverses the registration via `registrar.unregister(...)`. This is what makes the composition genuinely **dynamic**: components can be added and removed at runtime, the host's capability surface changes accordingly, but every accept/reject decision was frozen at design time.
@@ -943,10 +943,12 @@ On `broker.revoke(handle, registrar, context)`: the broker calls `registrar.unre
 
 ## In-Process Component Host (HLD-C §6.1)
 
-Status: **in progress.** Implemented: `ClaimHash`, `Dependencies.ownerOf`/`isExternallyOwned` (slice 1);
+Status: **implemented in DCP.** Implemented: `ClaimHash`, `Dependencies.ownerOf`/`isExternallyOwned` (slice 1);
 `VerifiedContracts`, `VerifiedContract`, `ContractSource`, the pin values, `HostFailureCode` and
-`ComponentHostException` (slice 2). Proposed: pinned artifacts and their loader, component configuration, and the host
-facade with rollback. This is the generic mechanism by which any runtime (Foundry, Flow, an embedding
+`ComponentHostException` (slice 2); `SharedApi`, `PinnedJarArtifacts`, `PinnedArtifactClassLoader` and the
+`ComponentActivation`, `HostPorts` and `ActivationContext` interfaces (slice 3); component configuration,
+`com.unfurl.dcp.componentconfig` (slice 4); `InProcessComponentHost`, `HostReport`, rollback and the exception-safe
+broker `accept` (slice 5). All five slices are implemented; hosts and composers adopt it next. This is the generic mechanism by which any runtime (Foundry, Flow, an embedding
 app) hosts a component the composition placed in-process. It sits on top of the broker and changes nothing in it. The
 worked example is the Kotak Neo read adapter hosted by Foundry as agent tools.
 
@@ -1062,6 +1064,7 @@ public final class InProcessComponentHost implements AutoCloseable {
 
 /**
  * Repository, in two stages so no component code runs before every check that needs none has passed.
+ * Each delivered file is read into memory once; hashing, inspection and loading all use that one snapshot.
  * Stage 1 (data only): hash jars against pins, read packaged claims, activation declarations and class listings
  * from the zip entries, and check the artifact rules below.
  * Stage 2 (code): build each component's PinnedArtifactClassLoader and instantiate its activation.
@@ -1069,23 +1072,45 @@ public final class InProcessComponentHost implements AutoCloseable {
 public final class PinnedJarArtifacts implements AutoCloseable {
     public static PinnedJarArtifacts inspect(Collection<Path> jars, VerifiedContracts contracts, SharedApi shared);   // stage 1
     public Optional<Claim> packagedClaim(ProviderArtifactPin pin);
+    public Optional<byte[]> packagedConfiguration(ProviderArtifactPin pin);                            // unfurl-config.yaml bytes
+    public List<String> ignoredArtifacts();                                                            // jars no hosted contract pins
     public ComponentActivation activate(ProviderArtifactPin pin);                                     // stage 2
     @Override public void close();                                                                     // closes every loader
 }
 ```
 
 **Contracts are deeply immutable.** `Transport.details` and `CompositionContractMetadata.extensions` are the only
-open-ended maps in a contract. Their records copy them through `contract/DeepImmutable`: nested maps, lists and sets
+open-ended maps in a contract. Their records copy them through `value/DeepImmutable`: nested maps, lists and sets
 become unmodifiable copies that share nothing with the source (nested `null`s are kept; a top-level `null` value is
 still rejected). A shallow `Map.copyOf` is not enough, because a holder could edit a nested value, such as a
 `companionArtifacts` hash, and every later read, including the broker's store lookups, would return a body that no
 longer matches its signed bytes. Values other than maps and collections must be immutable; a contract decoded by
 `ContractCodec` holds only strings, numbers and booleans there.
 
+The same rule covers what a host holds besides contracts. The claim records (`ClaimMetadata.extensions`,
+`IntegrationPorts.ports`, `OfferInterface.details`) and the runtime-binding records (`Configuration.values`,
+`DeploymentControls.values`, `RuntimeBindingMetadata.extensions`) freeze through `DeepImmutable` too, so a packaged
+claim whose hash was checked, or a validated binding, cannot change afterwards. Freezing does not change canonical
+bytes: map entries are sorted on serialization, and the golden claim-hash test still passes.
+
+**Which contracts are hosted.** A verified contract's provider *binds in-process* when the contract's signed
+`transport.kind` is `IN_PROCESS`. Only those contracts take part in inspection and admission; any other verified
+contract is left to the host's remote paths. A *component* is one provider identity (claim URI and version) across its
+hosted contracts. Every hosted contract of a component that carries a pin must carry the same one, else
+`PROVIDER_PIN_INVALID`; a hosted contract with no pin is refused at admission (`PROVIDER_PIN_MISSING`).
+
 **Artifact rules (stage 1, from zip data only).** `inspect` takes pins only from `VerifiedContracts`. For each
 component it requires every artifact in its `ProviderArtifactPin` (claim-bearing and companions) to be present with a
-matching SHA-256 → else `COMPONENT_DEPENDENCY_MISSING` naming the coordinates; extra jars are ignored and reported. It
-reads `META-INF/unfurl-catalog.yaml` with `PackagedClaim.parse`.
+matching SHA-256 → else `COMPONENT_DEPENDENCY_MISSING` naming the coordinates; extra jars are ignored and reported
+(`ignoredArtifacts()`). It reads `META-INF/unfurl-catalog.yaml` from the claim-bearing artifact with
+`PackagedClaim.parse` (`packagedClaim(pin)`), and hands the host the bytes of `META-INF/unfurl-config.yaml` from the
+same artifact when present (`packagedConfiguration(pin)`). Each of these metadata entries, and the activation
+declaration, is read with a 1 MiB bound; an oversized or unreadable entry, an invalid packaged claim, or a malformed
+declaration is `ARTIFACT_METADATA_INVALID`.
+
+**Activation declaration.** `META-INF/services/com.unfurl.dcp.host.ComponentActivation` is UTF-8 text. Blank lines and
+text from `#` to the end of a line are ignored; exactly one binary class name must remain. Two or more names in one
+file count as several declarations (`COMPONENT_ACTIVATION_DUPLICATE`).
 
 **Effective class set.** Every class rule below, the loader and eager loading use one definition of an artifact's
 classes for the running Java feature version `R = Runtime.version().feature()`, matching how the JDK itself reads a
@@ -1124,18 +1149,34 @@ application loader, so host classes are unreachable by default. Loading is defin
 1. Classes in `java.*` and other platform modules come from the parent.
 2. A class under a `SharedApi` prefix is loaded from `shared.apiLoader()` only (the host's single copy of the API the
    component and host exchange objects through).
-3. Every other class is defined only from the component's pinned artifacts, through the loader's own fixed URL list,
-   with each artifact opened as `new JarFile(file, true, ZipFile.OPEN_READ, Runtime.version())` so lookups select exactly
-   the effective entries enumerated in stage 1. Not found there means `ClassNotFoundException`; there is no fallback to
+3. Every other class is defined only from the component's pinned artifacts: the in-memory snapshots stage 1 hashed
+   and parsed, using each artifact's effective entry for the running Java version, so lookups select exactly the
+   entries enumerated in stage 1. Not found there means `ClassNotFoundException`; there is no fallback to
    any other loader.
 4. `getResource`/`getResources` search only the pinned artifacts, so service files and other resources from the host
-   classpath are never visible.
-5. The URL list is exactly the pinned artifacts and is never extended (`addURL` is not exposed; manifest `Class-Path`
-   was refused in stage 1).
+   classpath are never visible. A returned URL names the selected entry itself (its real, possibly versioned, name),
+   and reading it reads the snapshot, never a file.
+5. The artifact list is exactly the pinned artifacts and is never extended (manifest `Class-Path` was refused in
+   stage 1, and the loader is not a `URLClassLoader`).
+6. While the host runs component code (constructing the activation, and in slice 5 its factory and invocables), the
+   thread's context class loader is that component's loader, so libraries that look classes up through it stay inside
+   the pinned set.
+
+**One snapshot.** `inspect` reads each delivered file into memory exactly once. Those bytes are hashed against the
+pins, parsed for the stage-1 rules, and later used to define classes and serve resources. No file is opened again
+after `inspect` returns. Hashing a path and then loading from that path, even with the file held open, can verify
+one file and load another where an open file can be replaced atomically; with one snapshot the verified bytes are
+the loaded bytes by construction, and a file replaced or deleted after inspection changes nothing. The archive is
+read sequentially, and one that names the same entry twice is refused (`ARTIFACT_METADATA_INVALID`), so every path
+has exactly one reading. A component's decompressed entries stay in memory while it is admitted; bytes of jars that
+no hosted contract pins are dropped as soon as they are hashed. A class's code source is an identifier built from
+the pinned hash and file name, never a location anything is read from.
 
 **Instantiation.** `activate(pin)` loads the declared class with `Class.forName(name, false, loader)` (no static
-initialization yet) and requires its class loader to be that component's loader and its `CodeSource` location to be
-the declaring pinned artifact → else `ACTIVATION_ORIGIN_MISMATCH`. It then loads every class in the component's
+initialization yet) and requires its class loader to be that component's loader and the class to have been defined
+from the declaring artifact's snapshot → else `ACTIVATION_ORIGIN_MISMATCH`. The class must be a public `ComponentActivation`
+with a public no-argument constructor, and that constructor must not throw → else `COMPONENT_ACTIVATION_FAILED`. Before
+calling it, `activate` loads every class in the component's
 effective class sets the same way, without initialization (module descriptors and `package-info` excluded, versioned
 overrides selected for `R`), so a missing superclass or interface fails startup with `COMPONENT_DEPENDENCY_UNRESOLVED`
 before any component code runs. Only then does it call the public no-argument
@@ -1167,7 +1208,7 @@ composer and every host share one definition:
 - `Dependencies.ownerOf(String dependency)` (`claim/`): the first `owner=` qualifier, trimmed, or `""`; and
   `Dependencies.isExternallyOwned` for `host`, `fabric`, `customer-controlled` and `customer-*`.
 
-### Component configuration (HLD-C §3.10, §6.1 rule 8) [proposed]
+### Component configuration (HLD-C §3.10, §6.1 rule 8) [implemented; host wiring in slice 5]
 
 A component's configuration has three layers, like a packaged `application.yml` overridden by external configuration,
 except that the component, not the deployment, decides what may be overridden:
@@ -1204,13 +1245,40 @@ defaults:
 ```
 
 - Types: `string`, `integer`, `boolean`, `https-uri`, `host`, `iso-currency`, `duration`, `list<T>`, `secret-ref`.
-  `min`/`max`/`max_length` bound them.
-- `source: packaged` requires a default that satisfies the schema. `source: deployment` forbids one.
+  `min`/`max`/`max_length`/`max_items` bound them (table below).
+- `source: packaged` requires a default that satisfies the schema. `source: deployment` forbids one, and the
+  deployment must supply it.
 - `override` is absent (fixed), `tighten` (only toward `stricter`: `lower` or `higher`; for a list, a subset), or
   `replace` (any valid value). `replace` must be explicit, so widening a security-relevant value is always a visible
   choice by the component author.
 - A `secret-ref` value is always a `secret://` reference, passed through unresolved. The component resolves it through
   `SecretResolver` when it uses it, so no secret is ever materialized into configuration.
+
+| Type | Accepted value | Effective Java type | Bounds |
+|---|---|---|---|
+| `string` | a YAML string | `String` | `max_length` (characters) |
+| `integer` | an integral number within 64 bits; never a fraction or a string | `Long` | `min`, `max` |
+| `boolean` | `true` or `false` | `Boolean` | — |
+| `https-uri` | an absolute `https` URI with a host and no user info, query or fragment | `java.net.URI` | — |
+| `host` | a lower-case DNS host name (labels of letters, digits and inner hyphens; at most 253 characters) | `String` | — |
+| `iso-currency` | an upper-case ISO 4217 code the JDK knows | `String` | — |
+| `duration` | a non-negative ISO-8601 duration string, such as `PT30S` | `java.time.Duration` | `min`, `max` (ISO-8601 strings) |
+| `secret-ref` | `secret://` followed by a non-empty reference without whitespace | `String` | — |
+| `list<T>` | a YAML list whose elements each satisfy scalar `T` (no nested lists) | immutable `List<T>` | `max_items`, plus `T`'s bounds per element |
+
+The schema itself is checked strictly, and every problem in it is `CONFIG_INVALID` (a packaged default that is not a
+`secret://` reference for a `secret-ref` key is `CONFIG_SECRET_INLINE`):
+
+- Top-level keys are exactly `config_version` (must be `1`), `schema` (non-empty) and `defaults`; the YAML has unique
+  keys. Key names match `[A-Za-z][A-Za-z0-9_-]{0,63}`.
+- A key's attributes are `type` and `source` (required), `override`, `stricter`, `min`, `max`, `max_length`,
+  `max_items`; anything else is refused. A bound on a type it does not apply to is refused, as is `min > max`.
+- `override` needs `source: packaged`. `tighten` applies to `integer` and `duration` (with `stricter` required) and to
+  any list (subset; `stricter` forbidden). `stricter` anywhere else is refused.
+- `defaults` holds exactly the `source: packaged` keys, each valid for its key.
+
+Failure details name the key and the rule it broke; they never repeat a configuration value, so a secret typed into
+the wrong place is not echoed into logs.
 
 A component with no configuration ships no file, and its binding's `values`/`config_refs` are passed through as today.
 
@@ -1259,6 +1327,49 @@ component.
 Composers read the same file at catalog scan, so they can refuse a missing deployment key before writing bindings. They
 reuse DCP's `ComponentConfigurationSchema` and validator, so composer and host apply one rule set.
 
+**Types (`com.unfurl.dcp.componentconfig`).** A design-time package: it imports neither the broker nor `host/`, so
+composers use it without the host.
+
+```java
+/** Value: the parsed, validated packaged file. RESOURCE = "META-INF/unfurl-config.yaml". */
+public final class ComponentConfigurationSchema {
+    public static ComponentConfigurationSchema parse(byte[] yaml);    // throws ComponentConfigurationException
+    public Map<String, ConfigKey> keys();                             // sorted by name
+    public Map<String, Object> defaults();                            // typed, for source: packaged keys
+}
+public record ConfigKey(String name, ConfigValueType type, boolean list, Source source, OverridePolicy override,
+                        Stricter stricter, Comparable<?> min, Comparable<?> max, Integer maxLength, Integer maxItems) { }
+public enum ConfigValueType { STRING, INTEGER, BOOLEAN, HTTPS_URI, HOST, ISO_CURRENCY, DURATION, SECRET_REF }   // Strategy per type
+
+/** Specification: the merge and its checks. */
+public final class ComponentConfigurationValidator {
+    /** Composer check: every rule decidable without resolving references (references are checked for form only). */
+    public static List<ConfigFailure> check(ComponentConfigurationSchema schema, Configuration deployment);
+    /** Host merge: resolves references through `resolver` (null when the host binds none) and returns the result. */
+    public static EffectiveConfiguration merge(ComponentConfigurationSchema schema, Configuration deployment,
+                                               ConfigResolver resolver, ExecutionContext context);   // throws, all failures
+}
+
+/** Value: immutable result. toString() and redacted() never show a secret-ref value. */
+public final class EffectiveConfiguration {
+    public static EffectiveConfiguration unmanaged(Configuration deployment);   // component ships no schema
+    public boolean managed();
+    public Map<String, Object> values();
+    public <T> T require(String key, Class<T> type);
+    public <T> List<T> requireList(String key, Class<T> elementType);
+    public Map<String, Origin> origins();          // PACKAGED | INLINE | REFERENCE(configRef, revision)
+    public Map<String, Object> redacted();
+}
+public record ConfigFailure(ConfigFailureCode code, String key, String detail) { }
+public final class ComponentConfigurationException extends RuntimeException { public List<ConfigFailure> failures(); }
+```
+
+`ConfigFailureCode` has the eight `CONFIG_*` names of the table above; the host reports each under the
+`HostFailureCode` of the same name. A reference is unresolved (`CONFIG_REF_UNRESOLVED`) when it is not a `config://`
+URI, the host binds no `ConfigResolver`, the resolver throws or finds nothing, or the document is not exactly
+`{ value: … }` for that reference. `unmanaged` passes the binding's inline values through unchanged with origin
+`INLINE`; its `config_refs` stay on the runtime binding for the component to read, as today.
+
 ### Admission flow
 
 Admission runs in three stages, each over the whole set (contracts sorted by id for determinism) before the next starts.
@@ -1302,8 +1413,46 @@ unverified contracts: no `admit` overload takes them. The host's broker is built
    it carry `host.claimUri` as the consumer component, which step 3 guarantees equals the contract's consumer party.
 9. `broker.accept(d, tracking, activation.factory(context(c, binding)), startup)`; keep the `RegistrationHandle`.
 
-Success returns `HostReport` with the registrars by component and one entry per admitted operation, plus the ignored
-artifacts and activations (closed world: present but not named by any verified contract).
+Success returns `HostReport`:
+
+```java
+public record HostReport<R extends CapabilityRegistrar>(
+        Map<String, R> registrars,              // by component, "<claimUri>@<claimVersion>"; the component's own registrar
+        List<AdmittedOperation> operations,     // one per admitted contract, ordered by contract id
+        List<String> ignoredArtifacts,          // delivered jars no hosted contract pins; never loaded (closed world)
+        List<String> notHostedContracts) {      // verified contracts whose transport is not IN_PROCESS
+    public record AdmittedOperation(URI componentUri, String componentVersion, String capability,
+                                    URI contractId, String contractVersion,
+                                    Map<String, Object> configuration,                    // redacted: no secret-ref values
+                                    Map<String, EffectiveConfiguration.Origin> configurationOrigins) { }
+}
+```
+
+An unpinned jar is never opened for loading, so an activation it declares is ignored with it and appears only as an
+ignored artifact.
+
+**Lifecycle.** A host admits once. `admit` either returns the report or throws after rolling back, and a second call,
+or a call after `close()`, is an `IllegalStateException`. The host takes ownership of the `PinnedJarArtifacts` passed
+to `admit` and closes it on failure and on `close()`.
+
+**Failure reporting.**
+
+- Configuration failures for one contract are thrown as one `ComponentHostException` whose code is the first failure's
+  `CONFIG_*` code, whose message lists every failure, and whose cause is the `ComponentConfigurationException` holding
+  them all.
+- A broker refusal in `present`, a `BrokerException` from `accept`, or a failure of a host collaborator inside
+  `accept` (such as the broker's event sink) is `ADMISSION_REJECTED`.
+- Component code that throws during admission (an activation method, its factory, or its registrar's `register`), or
+  returns `null` where a value is required, is `COMPONENT_ACTIVATION_FAILED`.
+
+**Component code and the context class loader.** The host sets the component's loader as the thread's context class
+loader around every call it makes into component code: the activation's methods, the factory's `create`, each
+invocation of the returned `ContractInvocable` (a Decorator added before the broker's own adapter), and the registrar's
+`register`/`unregister`. A host that calls shape-specific registrar methods itself reaches component logic only through
+that decorated invocable.
+
+**Testing seam.** A package-private constructor takes a `CompositionBroker`, so tests can run the host over a broker
+double that is not exception-safe and prove the tracking registrar alone leaves no registration behind.
 
 ### Rollback and close
 
@@ -1316,7 +1465,9 @@ therefore does not rely on handles alone:
 - **Rollback** (any failure in stage 2, and `close()`): for every recorded attempt, in reverse order, call the
   component registrar's `unregister`; then `broker.revoke` each returned handle so revocation events are emitted.
   Registrars must make `unregister` idempotent and must fence any handle a failed `register` created. Every step runs
-  even if an earlier one throws; failures are attached as suppressed exceptions to the one `ComponentHostException`
+  even if an earlier one throws anything at all, including an `Error` such as an `AssertionError` from a component's
+  registrar, because a partly rolled-back host would keep operations registered and artifacts open with no way to
+  retry. Failures are attached as suppressed exceptions to the one `ComponentHostException`
   (or close failure) that is thrown. Then `artifacts.close()` closes the classloader.
 - **Broker `accept` is exception-safe** (change to `DefaultCompositionBroker`, see the broker section): if anything
   after `registrar.register` fails, it unregisters that capability before rethrowing, and if `register` itself throws
@@ -1350,7 +1501,9 @@ substrate LLD *Neutral host ports*). A component's activation adapts these to it
 | `ARTIFACT_SHADOWS_SHARED_API` | A pinned artifact contains a class or resource under a `SharedApi` prefix. |
 | `ARTIFACT_CLASS_DUPLICATE` | One class name appears in two artifacts of the same component. |
 | `ARTIFACT_VERSIONED_METADATA` | A pinned artifact has a copy of `META-INF/unfurl-catalog.yaml`, `META-INF/unfurl-config.yaml` or the activation declaration under `META-INF/versions/`. |
+| `ARTIFACT_METADATA_INVALID` | A packaged claim, packaged configuration or activation declaration is unreadable, over 1 MiB or malformed. |
 | `COMPONENT_ACTIVATION_MISSING` / `COMPONENT_ACTIVATION_DUPLICATE` | Zero or several activation declarations across the component's artifacts. |
+| `COMPONENT_ACTIVATION_FAILED` | The declared class is not a public `ComponentActivation` with a public no-argument constructor, constructing it threw, or its methods, factory or registrar threw or returned `null` during admission. |
 | `ACTIVATION_ORIGIN_MISMATCH` | The declared class is not in the declaring artifact, or loads from another loader or location. |
 | `COMPONENT_DEPENDENCY_UNRESOLVED` | Loading a pinned class without initialization finds a superclass or interface outside the pinned set and `SharedApi`. |
 | `CONSUMER_MISMATCH` | The contract's consumer party, or its runtime binding's consumer instance, is not this host's identity. |

@@ -1,5 +1,6 @@
 package com.unfurl.dcp.runtimebinding;
 
+import com.unfurl.dcp.value.DeepImmutable;
 import java.util.Map;
 
 /**
@@ -12,7 +13,8 @@ import java.util.Map;
 public record Configuration(Map<String, Object> values, Map<String, ConfigRef> configRefs) {
     /** Canonical constructor: defensive, null-safe copies. */
     public Configuration {
-        values = values == null ? Map.of() : Map.copyOf(values);
+        // Deep copy: nested maps and lists are frozen too, so the record cannot change after it is built.
+        values = DeepImmutable.map(values);
         configRefs = configRefs == null ? Map.of() : Map.copyOf(configRefs);
     }
 

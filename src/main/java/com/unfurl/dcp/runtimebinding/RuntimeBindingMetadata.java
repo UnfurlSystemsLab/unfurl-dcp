@@ -1,5 +1,6 @@
 package com.unfurl.dcp.runtimebinding;
 
+import com.unfurl.dcp.value.DeepImmutable;
 import java.net.URI;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -25,7 +26,8 @@ public record RuntimeBindingMetadata(Map<String, Object> extensions) {
      * missing extension map as empty metadata.
      */
     public RuntimeBindingMetadata {
-        extensions = extensions == null ? Map.of() : Map.copyOf(extensions);
+        // Deep copy: nested maps and lists are frozen too, so the record cannot change after it is built.
+        extensions = DeepImmutable.map(extensions);
     }
 
     /**

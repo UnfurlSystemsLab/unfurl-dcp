@@ -1,4 +1,4 @@
-package com.unfurl.dcp.contract;
+package com.unfurl.dcp.value;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -10,28 +10,29 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Deep defensive copy for the open-ended, JSON-shaped maps a contract carries ({@code Transport.details} and
- * {@code CompositionContractMetadata.extensions}). A shallow {@code Map.copyOf} leaves nested maps and lists shared and
- * mutable, so a holder of a verified contract could edit a nested value and make the body differ from its signed bytes
- * (LLD, <em>In-Process Component Host</em>, stage 0). Every contract record freezes through here instead.
+ * Deep defensive copy for the open-ended, JSON-shaped maps DCP records carry, such as {@code Transport.details},
+ * {@code CompositionContractMetadata.extensions} and a runtime binding's {@code Configuration.values}. A shallow
+ * {@code Map.copyOf} leaves nested maps and lists shared and mutable, so a holder of a verified contract could edit a
+ * nested value and make the body differ from its signed bytes (LLD, <em>In-Process Component Host</em>, stage 0). Records
+ * freeze through here instead. It is a leaf utility with no DCP dependencies, so every package may use it.
  *
  * <p>Rule: maps, lists and sets are copied recursively into unmodifiable collections that keep their iteration order
  * and may hold {@code null} elements, as decoded JSON can. Every other value is kept as is and must itself be immutable;
- * a contract decoded by {@link ContractCodec} holds only strings, numbers and booleans there. The copy shares nothing
- * mutable with its source, so later changes to the source never show through.
+ * a document decoded from JSON or YAML holds only strings, numbers and booleans there. The copy shares nothing mutable
+ * with its source, so later changes to the source never show through.
  */
-final class DeepImmutable {
+public final class DeepImmutable {
     /** Utility class: static rule only. */
     private DeepImmutable() { }
 
     /**
-     * Freezes a top-level extension map. Keeps the contract records' existing top-level semantics: {@code null} becomes
+     * Freezes a top-level open map. Keeps the records' existing top-level semantics: {@code null} becomes
      * an empty map, and a {@code null} key or value is rejected with {@link NullPointerException}.
      *
      * @param source the map as supplied or decoded, possibly null
      * @return an immutable map whose nested maps, lists and sets are immutable too
      */
-    static Map<String, Object> map(Map<String, ?> source) {
+    public static Map<String, Object> map(Map<String, ?> source) {
         if (source == null || source.isEmpty()) return Map.of();
         Map<String, Object> frozen = new LinkedHashMap<>();
         source.forEach((key, value) -> frozen.put(key, value(value)));

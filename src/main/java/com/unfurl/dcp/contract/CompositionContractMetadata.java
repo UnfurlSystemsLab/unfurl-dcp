@@ -1,5 +1,6 @@
 package com.unfurl.dcp.contract;
 
+import com.unfurl.dcp.value.DeepImmutable;
 import java.net.URI;
 import java.util.Comparator;
 import java.util.LinkedHashSet;

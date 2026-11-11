@@ -28,12 +28,16 @@ public enum HostFailureCode {
     ARTIFACT_CLASS_DUPLICATE,
     /** Stage 1: a packaged claim, configuration or activation declaration also appears under {@code META-INF/versions/}. */
     ARTIFACT_VERSIONED_METADATA,
+    /** Stage 1: a packaged claim, packaged configuration or activation declaration is unreadable, over 1 MiB or malformed. */
+    ARTIFACT_METADATA_INVALID,
     /** Stage 1: no activation declaration across the component's artifacts. */
     COMPONENT_ACTIVATION_MISSING,
     /** Stage 1: several activation declarations across the component's artifacts. */
     COMPONENT_ACTIVATION_DUPLICATE,
     /** Stage 1/2: the declared activation class is not in, or does not load from, the declaring artifact. */
     ACTIVATION_ORIGIN_MISMATCH,
+    /** Stage 2: the declared class is not a public ComponentActivation with a public no-argument constructor, or constructing it threw. */
+    COMPONENT_ACTIVATION_FAILED,
     /** Stage 2: a pinned class needs a type outside the pinned set and the shared API. */
     COMPONENT_DEPENDENCY_UNRESOLVED,
     /** Stage 1: the contract's consumer party, or its binding's consumer instance, is not this host. */

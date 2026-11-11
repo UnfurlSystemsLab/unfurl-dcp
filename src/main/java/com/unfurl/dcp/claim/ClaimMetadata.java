@@ -1,5 +1,6 @@
 package com.unfurl.dcp.claim;
 
+import com.unfurl.dcp.value.DeepImmutable;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 
@@ -25,6 +26,7 @@ public record ClaimMetadata(
      * while preserving null-as-empty behavior for optional projection metadata.
      */
     public ClaimMetadata {
-        extensions = extensions == null ? Map.of() : Map.copyOf(extensions);
+        // Deep copy: nested maps and lists are frozen too, so the record cannot change after it is built.
+        extensions = DeepImmutable.map(extensions);
     }
 }
