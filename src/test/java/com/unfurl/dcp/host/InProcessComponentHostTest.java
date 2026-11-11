@@ -159,6 +159,14 @@ class InProcessComponentHostTest {
 
         assertThat(HostedSwitches.constructed).hasValue(1);
         assertThat(report.registrars()).containsOnlyKeys("urn:provider@1.0.0");
+        // The component's scope runs host calls with the component's pinned loader as context loader, and restores the
+        // caller's after. The registrar's own class is shared test code here, so its loader is the host's: only the scope
+        // knows the component's loader.
+        ClassLoader caller = Thread.currentThread().getContextClassLoader();
+        ClassLoader inside = report.scopes().get("urn:provider@1.0.0").call(() -> Thread.currentThread().getContextClassLoader());
+        assertThat(inside.getName()).startsWith("dcp-component:");
+        assertThat(report.registrars().get("urn:provider@1.0.0").getClass().getClassLoader()).isNotSameAs(inside);
+        assertThat(Thread.currentThread().getContextClassLoader()).isSameAs(caller);
         assertThat(report.operations()).extracting(HostReport.AdmittedOperation::capability).containsExactly("tool.a", "tool.b");
         assertThat(report.ignoredArtifacts()).containsExactly("stray.jar");
         assertThat(report.notHostedContracts()).containsExactly("urn:contract:remote@1.0.0");

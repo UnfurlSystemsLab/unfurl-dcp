@@ -1427,6 +1427,7 @@ Success returns `HostReport`:
 ```java
 public record HostReport<R extends CapabilityRegistrar>(
         Map<String, R> registrars,              // by component, "<claimUri>@<claimVersion>"; the component's own registrar
+        Map<String, ComponentScope> scopes,     // same keys: run every call into the registrar, and into what it returns, here
         List<AdmittedOperation> operations,     // one per admitted contract, ordered by contract id
         List<String> ignoredArtifacts,          // delivered jars no hosted contract pins; never loaded (closed world)
         List<String> notHostedContracts) {      // verified contracts whose transport is not IN_PROCESS
@@ -1460,6 +1461,11 @@ loader around every call it makes into component code: the activation's methods,
 invocation of the returned `ContractInvocable` (a Decorator added before the broker's own adapter), and the registrar's
 `register`/`unregister`. A host that calls shape-specific registrar methods itself reaches component logic only through
 that decorated invocable.
+
+**The host's own calls.** DCP scopes what it calls (activation, factory, invocables, `register`/`unregister`), but a
+host also calls its registrar shape's own methods, such as a tool registrar's `definitions` and `executor`, and the
+objects they return. It runs each of those through the component's `ComponentScope` from `HostReport.scopes()`.
+Only DCP knows the component's loader; the registrar's class may come from shared code.
 
 **Testing seam.** A package-private constructor takes a `CompositionBroker`, so tests can run the host over a broker
 double that is not exception-safe and prove the tracking registrar alone leaves no registration behind.

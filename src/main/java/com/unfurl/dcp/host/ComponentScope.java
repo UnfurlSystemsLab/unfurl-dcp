@@ -20,10 +20,14 @@ import java.util.function.Supplier;
  * through the context loader therefore stay inside the component's pinned set instead of reaching the host classpath.
  * The previous context loader is always restored.
  *
+ * <p>A host receives one scope per admitted component in {@link HostReport#scopes()}, and must run every call it
+ * makes into that component's registrar, and into objects the registrar returns, through {@link #call} or
+ * {@link #run}. Only DCP knows which loader is the component's: the registrar's own class may come from shared code.
+ *
  * <p>It also supplies the Decorators the host puts around a component's factory, invocables and registrar, so every
  * call the host or the broker makes into the component goes through {@link #call}.
  */
-final class ComponentScope {
+public final class ComponentScope {
     private final ClassLoader loader;
 
     /** @param loader the component's pinned-artifact class loader */
@@ -31,8 +35,8 @@ final class ComponentScope {
         this.loader = Objects.requireNonNull(loader, "loader");
     }
 
-    /** Runs {@code action} under the component's loader and returns its result. */
-    <T> T call(Supplier<T> action) {
+    /** Runs {@code action} under the component's loader, restoring the caller's loader afterwards, and returns its result. */
+    public <T> T call(Supplier<T> action) {
         Thread thread = Thread.currentThread();
         ClassLoader previous = thread.getContextClassLoader();
         thread.setContextClassLoader(loader);
@@ -43,8 +47,8 @@ final class ComponentScope {
         }
     }
 
-    /** Runs {@code action} under the component's loader. */
-    void run(Runnable action) {
+    /** Runs {@code action} under the component's loader, restoring the caller's loader afterwards. */
+    public void run(Runnable action) {
         call(() -> {
             action.run();
             return null;

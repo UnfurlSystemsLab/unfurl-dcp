@@ -16,13 +16,16 @@ import java.util.TreeMap;
  *
  * @param registrars         each admitted component's own registrar of the host's shape, keyed by
  *                           {@code <claimUri>@<claimVersion>}
+ * @param scopes             each admitted component's context, under the same keys; the host runs every call into the
+ *                           registrar, and into anything it returns, through it
  * @param operations         one entry per admitted contract, ordered by contract id
  * @param ignoredArtifacts   delivered jars that no hosted contract pins; they were never loaded (closed world)
  * @param notHostedContracts verified contracts whose signed transport is not in-process, as {@code <id>@<version>}
  * @param <R>                the host's registrar shape
  */
-public record HostReport<R extends CapabilityRegistrar>(Map<String, R> registrars, List<AdmittedOperation> operations,
-                                                        List<String> ignoredArtifacts, List<String> notHostedContracts) {
+public record HostReport<R extends CapabilityRegistrar>(Map<String, R> registrars, Map<String, ComponentScope> scopes,
+                                                        List<AdmittedOperation> operations, List<String> ignoredArtifacts,
+                                                        List<String> notHostedContracts) {
     /**
      * Value Object: one admitted operation.
      *
@@ -44,9 +47,13 @@ public record HostReport<R extends CapabilityRegistrar>(Map<String, R> registrar
         }
     }
 
-    /** Defensive-copy constructor: every collection is an unmodifiable copy in its given order. */
+    /** Defensive-copy constructor: every collection is an unmodifiable copy in its given order; each registrar has a scope. */
     public HostReport {
         registrars = Collections.unmodifiableMap(new LinkedHashMap<>(registrars));
+        scopes = Collections.unmodifiableMap(new LinkedHashMap<>(scopes));
+        if (!scopes.keySet().equals(registrars.keySet())) {
+            throw new IllegalArgumentException("every admitted component needs exactly one scope");
+        }
         operations = List.copyOf(operations);
         ignoredArtifacts = List.copyOf(ignoredArtifacts);
         notHostedContracts = List.copyOf(notHostedContracts);

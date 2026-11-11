@@ -265,6 +265,7 @@ public final class InProcessComponentHost implements AutoCloseable {
         Map<ProviderArtifactPin, ComponentActivation> activations = new HashMap<>();
         Map<ProviderArtifactPin, ComponentScope> scopes = new HashMap<>();
         Map<String, R> registrars = new LinkedHashMap<>();
+        Map<String, ComponentScope> componentScopes = new LinkedHashMap<>();
         List<AdmittedOperation> operations = new ArrayList<>();
         for (Checked item : checked) {
             CompositionContract contract = item.verified().contract();
@@ -289,6 +290,7 @@ public final class InProcessComponentHost implements AutoCloseable {
                     activations.put(item.pin(), activation);
                     scopes.put(item.pin(), scope);
                     registrars.put(describe(provider), registrar);
+                    componentScopes.put(describe(provider), scope);
                 }
                 ComponentScope scope = scopes.get(item.pin());
                 ComponentActivation activation = activations.get(item.pin());
@@ -310,7 +312,7 @@ public final class InProcessComponentHost implements AutoCloseable {
                     contract.binding().providerCapability(), contract.contractId(), contract.contractVersion(),
                     item.configuration().redacted(), item.configuration().origins()));
         }
-        return new HostReport<>(registrars, operations, artifacts.ignoredArtifacts(), notHosted);
+        return new HostReport<>(registrars, componentScopes, operations, artifacts.ignoredArtifacts(), notHosted);
     }
 
     /** Step 6: the activation must speak for the same claim the artifact packages. */
