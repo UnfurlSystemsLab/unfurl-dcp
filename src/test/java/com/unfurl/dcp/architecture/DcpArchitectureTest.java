@@ -29,6 +29,12 @@ class DcpArchitectureTest {
             noClasses().that().resideOutsideOfPackage("com.unfurl.dcp.host..")
                     .should().dependOnClassesThat().resideInAPackage("com.unfurl.dcp.host..");
 
+    /** The deep-copy utility is a leaf: it uses only the JDK, so every DCP package may depend on it. */
+    @ArchTest
+    static final ArchRule value_is_a_jdk_only_leaf =
+            com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes().that().resideInAPackage("com.unfurl.dcp.value..")
+                    .should().onlyDependOnClassesThat().resideInAnyPackage("java..", "com.unfurl.dcp.value..");
+
     @ArchTest
     static final ArchRule trust_is_leaf_inside_dcp =
             noClasses().that().resideInAPackage("..trust..")
@@ -50,6 +56,8 @@ class DcpArchitectureTest {
     static final ArchRule design_time_and_schema_packages_do_not_import_broker_or_spi =
             noClasses().that().resideInAnyPackage(
                             "..description..",
+                            "..componentconfig..",
+                            "..value..",
                             "..claim..",
                             "..fault..",
                             "..manifest..",

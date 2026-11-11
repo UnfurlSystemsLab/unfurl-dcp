@@ -199,6 +199,48 @@ class DefaultCompositionBrokerTest {
                 .contains(BrokerEventType.CONTRACT_INVALIDATED, BrokerEventType.CAPABILITY_REVOKED);
     }
 
+    /**
+     * Exception safety: when publishing the registration event fails, or the registrar registers and then throws, the
+     * capability is unregistered before the failure is rethrown, so a failed accept never leaves a registration
+     * without a handle. A cleanup that itself throws, even an Error, never replaces the original failure.
+     */
+    @Test
+    void acceptNeverLeavesARegistrationWithoutAHandle() throws Exception {
+        KeyPair keyPair = keyPair();
+        InMemoryContractStore store = new InMemoryContractStore();
+        store.put(Fixtures.frozenContract(keyPair));
+        VerificationKeySet keys = VerificationKeySet.of(List.of(new VerificationKey("test-key", keyPair.getPublic())));
+
+        InMemoryCapabilityRegistrar registrar = new InMemoryCapabilityRegistrar();
+        DefaultCompositionBroker sinkFails = new DefaultCompositionBroker(store, new OfflineContractVerifier(), keys, null,
+                (event, context) -> {
+                    if (event.type() == BrokerEventType.CAPABILITY_REGISTERED) throw new IllegalStateException("sink down");
+                });
+        Disposition disposition = sinkFails.present(Fixtures.validProviderClaim(), ExecutionContext.empty());
+        assertThatThrownBy(() -> sinkFails.accept(disposition, registrar, new EchoContractInvocableFactory(), ExecutionContext.empty()))
+                .isInstanceOf(IllegalStateException.class).hasMessage("sink down");
+        assertThat(registrar.registration("answer.search")).isEmpty();
+
+        DefaultCompositionBroker broker = new DefaultCompositionBroker(store, new OfflineContractVerifier(), keys, null, null);
+        InMemoryCapabilityRegistrar stored = new InMemoryCapabilityRegistrar();
+        com.unfurl.dcp.spi.CapabilityRegistrar registerThenThrow = new com.unfurl.dcp.spi.CapabilityRegistrar() {
+            @Override public void register(String name, com.unfurl.substrate.composition.ContractInvocable invocable, ExecutionContext context) {
+                stored.register(name, invocable, context);
+                throw new IllegalStateException("register boom");
+            }
+
+            @Override public void unregister(String name, ExecutionContext context) {
+                stored.unregister(name, context);
+                throw new AssertionError("unregister boom");
+            }
+        };
+        assertThatThrownBy(() -> broker.accept(disposition, registerThenThrow, new EchoContractInvocableFactory(), ExecutionContext.empty()))
+                .isInstanceOf(IllegalStateException.class).hasMessage("register boom")
+                .satisfies(e -> assertThat(e.getSuppressed()).singleElement()
+                        .satisfies(s -> assertThat(s).isInstanceOf(AssertionError.class).hasMessage("unregister boom")));
+        assertThat(stored.registration("answer.search")).isEmpty();
+    }
+
     private DefaultCompositionBroker broker(InMemoryContractStore store, KeyPair keyPair, RecordingBrokerEventSink events) {
         return new DefaultCompositionBroker(
                 store,

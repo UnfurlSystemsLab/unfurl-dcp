@@ -98,7 +98,9 @@ public final class DefaultCompositionBroker implements CompositionBroker {
     /**
      * Adapter method: materializes the host executor for an accepted disposition. It re-fetches the
      * frozen contract by id/version and re-verifies its signature so callers cannot smuggle stale
-     * or unverified contract objects into the capability surface.
+     * or unverified contract objects into the capability surface. It is exception-safe: when
+     * registration or the registration event fails, the capability is unregistered before the failure
+     * is rethrown.
      */
     @Override
     public RegistrationHandle accept(
@@ -132,8 +134,21 @@ public final class DefaultCompositionBroker implements CompositionBroker {
                 List.of(binding.providerCapability()));
         ContractInvocable delegate = invocableFactory.create(frozen.contract(), binding, context);
         ContractInvocable adapted = new ContractInvocableAdapter(frozen, handle.stableId(), delegate);
-        registrar.register(binding.providerCapability(), adapted, context);
-        publish(BrokerEventType.CAPABILITY_REGISTERED, handle.claimUri(), handle.contractId(), binding.providerCapability(), DispositionReason.MATCH_FOUND, context);
+        // Exception safety: a failed accept must never leave a registration without a returned handle. If register throws
+        // (it may have partly registered) or anything after it throws (today, publishing the event), unregister the
+        // capability before rethrowing; a failed unregister is attached as suppressed.
+        try {
+            registrar.register(binding.providerCapability(), adapted, context);
+            publish(BrokerEventType.CAPABILITY_REGISTERED, handle.claimUri(), handle.contractId(), binding.providerCapability(), DispositionReason.MATCH_FOUND, context);
+        } catch (RuntimeException | Error failure) {
+            try {
+                registrar.unregister(binding.providerCapability(), context);
+            } catch (Throwable cleanup) {
+                // Whatever cleanup throws must not replace the original failure.
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
         return handle;
     }
 

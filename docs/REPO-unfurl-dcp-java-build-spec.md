@@ -234,7 +234,7 @@ Required rule classes include:
 - `invalidate(handle, registrar, context)` emits `CONTRACT_INVALIDATED` and revokes exposed capabilities without attempting runtime self-heal or design-time renegotiation.
 - Broker events carry metadata only by default and propagate correlation ids through the broker path.
 
-### 8B) In-Process Component Host   [in progress — slices 1–2 of 5 implemented]
+### 8B) In-Process Component Host   [implemented]
 Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
 - The host accepts only `VerifiedContracts` (signature against trusted keys, schema, signed-body equality, no
   duplicates; all-or-nothing load) and builds its broker over that same store. Pins are read only from verified bodies. **Implemented** (slice 2): `VerifiedContracts`, with `PROVIDER_PIN_INVALID` for a malformed pin.
@@ -248,7 +248,10 @@ Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
   after `register`, continues past individual failures, and reports them as suppressed.
 - Every `owner=host` need is covered by the activation and by a bound neutral host port type, or admission fails with
   `HOST_DEPENDENCY_UNMET` listing every gap; no default or no-op port exists.
-- Admission is all-or-nothing. `close()` uses the same rollback path.
+- Admission is all-or-nothing. `close()` uses the same rollback path. **Implemented** (slice 5): `InProcessComponentHost` and
+  `HostReport`; rollback continues past anything a step throws, including an `Error`, and the broker's `accept` is
+  exception-safe. Tests cover every failure code, no component code before stage 1 passes, and no orphaned
+  registration with and without an exception-safe broker.
 - No `ServiceLoader`. Each component's whole runtime artifact set is pinned; its classes load only through a
   `PinnedArtifactClassLoader` (platform-loader parent, `SharedApi` prefixes from the host's API loader, everything else
   from the pinned artifacts with no fallback, resources from the pinned artifacts only). Manifest `Class-Path`, shared-API
@@ -258,14 +261,19 @@ Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
   multi-release selection as the JDK applies it (only `META-INF/versions/**` ignored in ordinary jars; `META-INF/`
   paths never versioned), module descriptors (`module-info.class`, any version) and `package-info` excluded. The
   packaged claim and activation declaration are read only from their base `META-INF/` paths, and a versioned copy is
-  refused. Jackson's multi-release, modular jar loads cleanly as a pinned companion.
+  refused. Jackson's multi-release, modular jar loads cleanly as a pinned companion. **Implemented** (slice 3):
+  `PinnedJarArtifacts` (stage 1 from zip data, stage 2 loading), `PinnedArtifactClassLoader` and `SharedApi`, tested
+  with jars compiled at test time and the real Jackson jars; each delivered jar is read into memory once and
+  hashed, inspected and loaded from that one snapshot, so nothing on disk can change what loads; `SharedApiBoundaryTest` pins the one non-shared type the shared packages expose.
 - Every admitted contract's consumer party and runtime binding consumer equal the host's packaged identity, or
   admission fails with `CONSUMER_MISMATCH` before any code runs.
 - Component configuration: `META-INF/unfurl-config.yaml` (schema and packaged defaults, base path only) merged with the
   binding's inline values and `config_refs` (resolved through the host's `ConfigResolver`) into an immutable
   `EffectiveConfiguration`. Fixed keys can't change, `tighten` overrides can't widen, secrets are `secret://` references
   only, and all `CONFIG_*` failures are collected before any component code runs. `ComponentConfigurationSchema` and
-  its validator are shared with composers.
+  its validator are shared with composers. **Implemented** (slice 4) in `com.unfurl.dcp.componentconfig`: strict schema
+  parse, `check` for composers, `merge` for hosts; the host calls it in slice 5. Claim and runtime-binding records
+  freeze their open maps deeply, like contracts.
 - `ClaimHash.canonical` and `Dependencies.ownerOf`/`isExternallyOwned` are the single definitions; Fabric delegates to
   them. **Implemented** (slice 1 of 8B), with a golden hash test.
 - No host product types: host ports come from `substrate-ports`, registrar shapes from the host.

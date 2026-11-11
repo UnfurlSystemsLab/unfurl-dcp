@@ -1,11 +1,9 @@
 package com.unfurl.dcp.host;
 
 import com.unfurl.dcp.contract.CompositionContract;
-import com.unfurl.dcp.contract.CompositionContractMetadata;
 import com.unfurl.dcp.contract.ContractFreezer;
 import com.unfurl.dcp.contract.FrozenContract;
 import com.unfurl.dcp.testing.CryptoFixtures;
-import com.unfurl.dcp.testing.Fixtures;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * the verified body.
  */
 class VerifiedContractsTest {
-    private static final KeyPair KEYS = CryptoFixtures.keyPair();
+    private static final KeyPair KEYS = HostFixtures.KEYS;
     private static final String SHA_A = "a".repeat(64);
     private static final String SHA_B = "b".repeat(64);
     private static final String SHA_C = "c".repeat(64);
@@ -37,8 +35,8 @@ class VerifiedContractsTest {
     @Test
     void loadsOrdersAndIndexesVerifiedContracts() {
         VerifiedContracts contracts = VerifiedContracts.load(List.of(
-                source("z.json", contract("urn:contract:z", "tool.z", Map.of())),
-                source("a.json", contract("urn:contract:a", "tool.a", Map.of()))), CryptoFixtures.keySet(KEYS));
+                HostFixtures.source("z.json", HostFixtures.contract("urn:contract:z", "tool.z", Map.of())),
+                HostFixtures.source("a.json", HostFixtures.contract("urn:contract:a", "tool.a", Map.of()))), CryptoFixtures.keySet(KEYS));
 
         assertThat(contracts.all()).extracting(VerifiedContract::id)
                 .containsExactly("urn:contract:a@1.0.0", "urn:contract:z@1.0.0");
@@ -54,16 +52,16 @@ class VerifiedContractsTest {
     void refusesAnUntrustedSignature() {
         KeyPair other = CryptoFixtures.keyPair();
         FrozenContract foreign = new ContractFreezer(CryptoFixtures.signingKeyRef())
-                .freeze(contract("urn:contract:a", "tool.a", Map.of()), CryptoFixtures.signer(other));
+                .freeze(HostFixtures.contract("urn:contract:a", "tool.a", Map.of()), CryptoFixtures.signer(other));
         assertUnverified(() -> VerifiedContracts.load(List.of(
-                source("ok.json", contract("urn:contract:b", "tool.b", Map.of())),
+                HostFixtures.source("ok.json", HostFixtures.contract("urn:contract:b", "tool.b", Map.of())),
                 new ContractSource("foreign.json", foreign.canonicalBytes())), CryptoFixtures.keySet(KEYS)), "foreign.json");
     }
 
     /** An envelope whose body was edited after signing fails, though its signature still verifies. */
     @Test
     void refusesABodyThatDiffersFromItsSignedBytes() {
-        byte[] envelope = freeze(contract("urn:contract:a", "tool.a", Map.of("artifactSha256", SHA_A))).canonicalBytes();
+        byte[] envelope = HostFixtures.freeze(HostFixtures.contract("urn:contract:a", "tool.a", Map.of("artifactSha256", SHA_A))).canonicalBytes();
         String text = new String(envelope, StandardCharsets.UTF_8);
         int body = text.indexOf("\"contract\"");
         assertThat(body).isNotNegative();
@@ -79,8 +77,8 @@ class VerifiedContractsTest {
     @Test
     void refusesDuplicatesAndGarbage() {
         assertUnverified(() -> VerifiedContracts.load(List.of(
-                source("one.json", contract("urn:contract:a", "tool.a", Map.of())),
-                source("two.json", contract("urn:contract:b", "tool.a", Map.of()))), CryptoFixtures.keySet(KEYS)), "two.json");
+                HostFixtures.source("one.json", HostFixtures.contract("urn:contract:a", "tool.a", Map.of())),
+                HostFixtures.source("two.json", HostFixtures.contract("urn:contract:b", "tool.a", Map.of()))), CryptoFixtures.keySet(KEYS)), "two.json");
         assertUnverified(() -> VerifiedContracts.load(List.of(
                 new ContractSource("junk.json", "{".getBytes(StandardCharsets.UTF_8))), CryptoFixtures.keySet(KEYS)), "junk.json");
     }
@@ -88,8 +86,8 @@ class VerifiedContractsTest {
     /** The directory form reads only top-level *.json files, in name order; a missing directory fails. */
     @Test
     void loadsADirectoryNonRecursively() throws Exception {
-        Files.write(dir.resolve("b.json"), freeze(contract("urn:contract:b", "tool.b", Map.of())).canonicalBytes());
-        Files.write(dir.resolve("a.json"), freeze(contract("urn:contract:a", "tool.a", Map.of())).canonicalBytes());
+        Files.write(dir.resolve("b.json"), HostFixtures.freeze(HostFixtures.contract("urn:contract:b", "tool.b", Map.of())).canonicalBytes());
+        Files.write(dir.resolve("a.json"), HostFixtures.freeze(HostFixtures.contract("urn:contract:a", "tool.a", Map.of())).canonicalBytes());
         Files.writeString(dir.resolve("notes.txt"), "ignored");
         Files.createDirectories(dir.resolve("nested"));
         Files.writeString(dir.resolve("nested/c.json"), "{");
@@ -102,13 +100,13 @@ class VerifiedContractsTest {
     @Test
     void readsProviderPinsFromTheVerifiedBody() {
         VerifiedContracts contracts = VerifiedContracts.load(List.of(
-                source("none.json", contract("urn:contract:none", "tool.none", Map.of())),
-                source("pinned.json", contract("urn:contract:pinned", "tool.pinned", Map.of(
+                HostFixtures.source("none.json", HostFixtures.contract("urn:contract:none", "tool.none", Map.of())),
+                HostFixtures.source("pinned.json", HostFixtures.contract("urn:contract:pinned", "tool.pinned", Map.of(
                         "artifactCoordinates", "com.example:component:1.0.0",
                         "artifactSha256", SHA_A,
                         "claimHash", SHA_B,
                         "companionArtifacts", List.of(Map.of("coordinates", "com.example:lib:2.0.0", "sha256", SHA_C))))),
-                source("partial.json", contract("urn:contract:partial", "tool.partial", Map.of(
+                HostFixtures.source("partial.json", HostFixtures.contract("urn:contract:partial", "tool.partial", Map.of(
                         "artifactCoordinates", "com.example:component:1.0.0", "artifactSha256", SHA_A)))),
                 CryptoFixtures.keySet(KEYS));
 
@@ -133,7 +131,7 @@ class VerifiedContractsTest {
     @SuppressWarnings("unchecked")
     void verifiedContractsCannotBeMutatedThroughAccessors() throws Exception {
         VerifiedContracts contracts = VerifiedContracts.load(List.of(
-                source("pinned.json", contract("urn:contract:pinned", "tool.pinned", Map.of(
+                HostFixtures.source("pinned.json", HostFixtures.contract("urn:contract:pinned", "tool.pinned", Map.of(
                         "artifactCoordinates", "com.example:component:1.0.0",
                         "artifactSha256", SHA_A,
                         "claimHash", SHA_B,
@@ -196,22 +194,5 @@ class VerifiedContractsTest {
             assertThat(e.code()).isEqualTo(HostFailureCode.CONTRACT_UNVERIFIED);
             assertThat(e.subject()).contains(subject);
         });
-    }
-
-    private static ContractSource source(String name, CompositionContract contract) {
-        return new ContractSource(name, freeze(contract).canonicalBytes());
-    }
-
-    private static FrozenContract freeze(CompositionContract contract) {
-        return new ContractFreezer(CryptoFixtures.signingKeyRef()).freeze(contract, CryptoFixtures.signer(KEYS));
-    }
-
-    /** Builds a single-edge contract with its own id, provider capability and extensions. */
-    private static CompositionContract contract(String id, String capability, Map<String, Object> extensions) {
-        CompositionContract base = Fixtures.validContract();
-        return new CompositionContract(URI.create(id), base.contractVersion(), base.parties(),
-                new com.unfurl.dcp.contract.Binding(capability, capability, ">=1.0.0"), base.dataMapping(),
-                base.transport(), base.expectations(), base.provenance(), base.trust(), base.invalidation(),
-                new CompositionContractMetadata(extensions));
     }
 }
