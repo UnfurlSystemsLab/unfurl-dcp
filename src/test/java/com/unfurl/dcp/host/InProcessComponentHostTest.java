@@ -298,6 +298,19 @@ class InProcessComponentHostTest {
         }
     }
 
+    /** An audit sink that fails on the broker's first event refuses admission with a code, before any component code. */
+    @Test
+    void anEventSinkFailingDuringPresentIsAnAdmissionRefusal() throws Exception {
+        Setup setup = new Setup();
+        setup.failPresented = true;
+        assertThatThrownBy(() -> setup.host().admit(setup.bindings(), setup.inspect(), TestToolRegistrar.class, HOST, STARTUP))
+                .isInstanceOfSatisfying(ComponentHostException.class, e -> {
+                    assertThat(e.code()).isEqualTo(HostFailureCode.ADMISSION_REJECTED);
+                    assertThat(e.getCause()).hasMessage("audit sink is down");
+                });
+        assertThat(HostedSwitches.constructed).hasValue(0);
+    }
+
     /** Rollback continues past a failing unregister and reports it as suppressed. */
     @Test
     void rollbackContinuesPastAFailingUnregister() throws Exception {
@@ -394,6 +407,7 @@ class InProcessComponentHostTest {
         private boolean remoteContract;
         private boolean exceptionSafeBroker = true;
         private String failEventFor;
+        private boolean failPresented;
         private HostPorts ports = ports(Map.of(OperationAuditSink.class, (OperationAuditSink) (event, context) -> { }));
         private ProviderArtifactPin pin;
         private VerifiedContracts contracts;
@@ -459,6 +473,7 @@ class InProcessComponentHostTest {
             build();
             BrokerEventSink sink = (event, context) -> {
                 events.add(event);
+                if (failPresented && event.type() == BrokerEventType.CLAIM_PRESENTED) throw new IllegalStateException("audit sink is down");
                 if (event.type() == BrokerEventType.CAPABILITY_REGISTERED && event.capabilityName().equals(failEventFor)) {
                     throw new IllegalStateException("audit sink is down");
                 }

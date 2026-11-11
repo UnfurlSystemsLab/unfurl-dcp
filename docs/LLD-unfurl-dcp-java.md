@@ -1450,7 +1450,8 @@ to `admit` and closes it on failure and on `close()`.
   `CONFIG_*` code, whose message lists every failure, and whose cause is the `ComponentConfigurationException` holding
   them all.
 - A broker refusal in `present`, a `BrokerException` from `accept`, or a failure of a host collaborator inside
-  `accept` (such as the broker's event sink) is `ADMISSION_REJECTED`.
+  `present` or `accept` (such as the broker's event sink) is `ADMISSION_REJECTED`. `admit` therefore throws only
+  `ComponentHostException`, whatever fails.
 - Component code that throws during admission (an activation method, its factory, or its registrar's `register`), or
   returns `null` where a value is required, is `COMPONENT_ACTIVATION_FAILED`.
 

@@ -218,7 +218,15 @@ public final class InProcessComponentHost implements AutoCloseable {
             }
             EffectiveConfiguration configuration = configuration(pin, binding, schemas, subject);
 
-            Disposition disposition = broker.present(claim, contract.binding().providerCapability(), startup);
+            Disposition disposition;
+            try {
+                disposition = broker.present(claim, contract.binding().providerCapability(), startup);
+            } catch (RuntimeException | Error presentFailure) {
+                // A host collaborator inside present (for example the broker's audit sink) failed: the operation is not
+                // admitted, reported under the same code as a collaborator failure inside accept.
+                throw new ComponentHostException(HostFailureCode.ADMISSION_REJECTED, subject,
+                        "the broker could not present the provider: " + presentFailure, presentFailure);
+            }
             if (disposition == null || disposition.kind() != DispositionKind.ACCEPT
                     || !contract.contractId().equals(disposition.matchedContractId())
                     || !contract.contractVersion().equals(disposition.matchedContractVersion())) {
