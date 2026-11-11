@@ -1300,6 +1300,15 @@ verify the payload hash and requested release/tenant/environment/revision, then 
 protected overlay. The proposed host does not consume that signed index itself. A read-only mount restricts runtime
 writes but does not authenticate the source. An unauthenticated overlay must not be provisioned as trusted input.
 
+**The binding document (`runtimebinding/RuntimeBindingCodec`, implemented).** Bindings travel as one YAML document,
+`{ runtime_binding_set: { root_binding_id, generated_at, source_signed_contract, runtime_bindings: [...] } }`, in
+snake_case. `RuntimeBindingCodec.read` is strict: exactly one document with unique keys, no field the model does not
+define, and unique binding and contract ids (`RuntimeBindingSet`). `root_binding_id` is absent in a host overlay, which
+holds only that host bindings. `write` is deterministic (sorted properties, nulls omitted, number-like strings
+quoted). A host reads its overlay with this codec and takes `RuntimeBindingSet.byContractId()` to `admit`. Fabric still
+writes the document with its own mapper and parses it as a tree in `assembly-bind`; both delegate here when Fabric
+implements hosted bindings (Fabric HLD-in-process-component-hosting §6).
+
 Changing an inline value takes a new provisioned binding revision. A referenced value can change in its store without
 one. It is still checked by every rule below, so a ConfigMap edit can tighten `maxRows` but cannot redirect
 `portfolioBase`, widen `allowedHosts` or inline a secret. Inline values have cryptographic integrity only when the
