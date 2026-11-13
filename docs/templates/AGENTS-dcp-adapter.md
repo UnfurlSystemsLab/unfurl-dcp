@@ -285,6 +285,8 @@ Every DCP adapter/substrate component must test:
 - no model/cloud/database/auth/telemetry SDKs in protocol/core modules
 - generated OpenAPI/Swagger or equivalent API docs expose only accepted/runtime-bound capabilities with explicit schemas
 - action-scoped authoring questions are generated from DCP metadata and do not mutate runtime state directly
+- every optional capability the adapter uses or offers works on both paths (§13): with its child contract in the
+  composition, and without it
 
 For Flow adapters, additionally test:
 
@@ -328,3 +330,20 @@ safe to publish.
 If a capability is accepted and intended to be public but has no explicit schema, stop and record a
 documentation gap. Do not infer schemas from prompts, logs, model outputs, retrieved chunks, sample payloads,
 or implementation-specific DTOs that were not approved as the DCP contract surface.
+
+## 13. Optional Capabilities: The Signed Contract Decides
+
+An optional capability is one a composition may include or leave out, for example `identity-context` (an identity
+provider such as Keycloak). Spec rule: DCP `AGENTS.md` §4a.
+
+- Whether it is present is decided only by the signed composition contract: present when the contract has a child
+  contract for it, absent otherwise. Do not switch it with an environment variable, a profile choice, a flag, or by
+  detecting whether a service is reachable.
+- Present: use it fully, through its standard protocol and the settings in its runtime binding (for identity, OAuth
+  2.0 token verification, token exchange and client-credentials service tokens). No partial, downgraded or
+  development mode. If the adapter cannot use it, refuse to start and say why.
+- Absent: still work, with a defined and documented behavior (for identity, unauthenticated operation on a trusted
+  network, with a startup warning). Absence is never an error and never a silent half-configured state.
+- Decide it from the accepted contracts and runtime bindings the host gives you (the frozen child contracts' bindings
+  name the provider capability), at startup, and keep the decision for the process's life.
+- Document both behaviors in the adapter's docs, and test both (§10).

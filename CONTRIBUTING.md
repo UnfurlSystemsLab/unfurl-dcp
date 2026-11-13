@@ -41,5 +41,7 @@ Do not define new protocol behavior only in Java code.
 - Tests cover schema, validation, broker, or compatibility behavior touched by
   the change.
 - Docs are updated in the same change when behavior changes.
+- Optional capabilities: presence is decided only by the composition contract, and both paths (present and absent)
+  are defined, documented and tested (DCP `AGENTS.md` §4a; adapter template §13).
 - Sensitive data, credentials, prompts, raw model outputs, and customer
   artifacts are not committed.
