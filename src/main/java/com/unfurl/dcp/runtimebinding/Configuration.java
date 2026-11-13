@@ -12,7 +12,10 @@ import java.util.Map;
  * needs several secrets, such as an identity binding's per-service client credentials (HLD-C2
  * {@code configuration.secret_refs}). All maps are copied and never null.
  */
-public record Configuration(Map<String, Object> values, Map<String, ConfigRef> configRefs, Map<String, SecretRef> secretRefs) {
+public record Configuration(Map<String, Object> values, Map<String, ConfigRef> configRefs,
+                            // Omitted when empty, so documents of bindings without secret references are unchanged.
+                            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+                            Map<String, SecretRef> secretRefs) {
     /** Canonical constructor: defensive, null-safe copies. */
     public Configuration {
         // Deep copy: nested maps and lists are frozen too, so the record cannot change after it is built.

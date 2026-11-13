@@ -67,6 +67,11 @@ class RuntimeBindingCodecTest {
         assertThat(binding.configuration().secretRefs())
                 .containsEntry("urn:unfurl:foundry", new SecretRef("secret://demo/identity/foundry-service"));
         assertThat(new String(RuntimeBindingCodec.write(set), StandardCharsets.UTF_8)).contains("secret_refs");
+        assertThat(new String(RuntimeBindingCodec.write(new RuntimeBindingSet(null, null, null, java.util.List.of(new RuntimeBinding(binding.bindingId(),
+                binding.contractId(), binding.contractVersion(), binding.targetEnvironment(), binding.providerInstance(),
+                binding.consumerInstance(), binding.runtimePolicy(), new Configuration(Map.of("a", "b"), Map.of()),
+                binding.deploymentControls(), binding.lifecycle(), binding.metadata())))), StandardCharsets.UTF_8))
+                .as("empty secret_refs are omitted").doesNotContain("secret_refs");
     }
 
     /** Anything but exactly one well-formed set is refused, and the message never repeats document content. */
