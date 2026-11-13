@@ -571,6 +571,10 @@ public enum DeploymentKind { IN_PROCESS, CONTAINER, REMOTE_SERVICE, EXTERNAL_SAA
 
 public record SecretRef(@NotBlank String uri) { ... }       // reference only
 public record ConfigRef(@NotBlank String uri) { ... }
+// configuration.values (non-secret), config_refs (config://) and secret_refs (secret://, HLD-C2 configuration): a
+// binding that needs several secrets, such as an identity binding's per-service client credentials, names each one
+// in secret_refs instead of inlining it in values. The validator requires every secret_refs entry to be secret://.
+public record Configuration(Map<String, Object> values, Map<String, ConfigRef> configRefs, Map<String, SecretRef> secretRefs)
 public record RuntimeBindingMetadata(Map<String, Object> extensions) { ... }
 ```
 
@@ -1020,6 +1024,23 @@ public final class VerifiedContracts implements ContractStore {
     public static VerifiedContracts loadDirectory(Path directory, VerificationKeySet keys);   // *.json, non-recursive, name order
     public List<VerifiedContract> all();                                                       // ordered by contract id, then version
     public Optional<VerifiedContract> verified(URI contractId, String contractVersion);
+}
+
+/**
+ * Repository (Composite): a signed composition as a host receives it, its verified aggregate root plus exactly the
+ * children the root names. VerifiedContracts proves each envelope; this proves the set. Every envelope is verified as by
+ * VerifiedContracts; the root must have no parent among them; and the children must be exactly the root's transitive
+ * childContractIds() closure, none missing and none extra, matched by contract id. So removing a child's file (for example
+ * an optional component's contract, such as identity-context) cannot turn that component off: the load fails with
+ * CONTRACT_UNVERIFIED, naming the missing child. A host decides whether an optional component is present from children()
+ * only after this load succeeds.
+ */
+public final class VerifiedComposition {
+    public static VerifiedComposition load(ContractSource root, List<ContractSource> children, VerificationKeySet keys);
+    public static VerifiedComposition loadDirectory(Path rootFile, Path childDirectory, VerificationKeySet keys);
+    public VerifiedContract root();
+    public VerifiedContracts children();
+    public List<VerifiedContract> childrenFor(String providerCapability);   // ordered as children().all()
 }
 
 /** The single failure type: one HostFailureCode (table below) and the subject it concerns. */

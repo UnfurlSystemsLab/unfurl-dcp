@@ -89,6 +89,15 @@ public final class RuntimeBindingValidator {
             diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "base_url and base_url_ref are mutually exclusive", "provider_instance"));
         }
         scanMap("configuration.values", binding.configuration() == null ? Map.of() : binding.configuration().values(), diagnostics);
+        // secret_refs carry references only: each must be a secret:// URI, never inline material.
+        if (binding.configuration() != null) {
+            binding.configuration().secretRefs().forEach((key, ref) -> {
+                if (ref == null || ref.uri() == null || !ref.uri().startsWith("secret://") || ref.uri().length() == "secret://".length()) {
+                    diagnostics.add(Diagnostic.error(ErrorCode.BINDING_INLINE_SECRET,
+                            "configuration.secret_refs entries must be secret:// references", "configuration.secret_refs." + key));
+                }
+            });
+        }
         scanMap("deployment_controls.values", binding.deploymentControls() == null ? Map.of() : binding.deploymentControls().values(), diagnostics);
         return new SchemaValidationReport(diagnostics);
     }
