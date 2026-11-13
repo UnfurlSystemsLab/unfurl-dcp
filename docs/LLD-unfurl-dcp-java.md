@@ -1022,6 +1022,23 @@ public final class VerifiedContracts implements ContractStore {
     public Optional<VerifiedContract> verified(URI contractId, String contractVersion);
 }
 
+/**
+ * Repository (Composite): a signed composition as a host receives it, its verified aggregate root plus exactly the
+ * children the root names. VerifiedContracts proves each envelope; this proves the set. Every envelope is verified as by
+ * VerifiedContracts; the root must have no parent among them; and the children must be exactly the root's transitive
+ * childContractIds() closure, none missing and none extra, matched by contract id. So removing a child's file (for example
+ * an optional component's contract, such as identity-context) cannot turn that component off: the load fails with
+ * CONTRACT_UNVERIFIED, naming the missing child. A host decides whether an optional component is present from children()
+ * only after this load succeeds.
+ */
+public final class VerifiedComposition {
+    public static VerifiedComposition load(ContractSource root, List<ContractSource> children, VerificationKeySet keys);
+    public static VerifiedComposition loadDirectory(Path rootFile, Path childDirectory, VerificationKeySet keys);
+    public VerifiedContract root();
+    public VerifiedContracts children();
+    public List<VerifiedContract> childrenFor(String providerCapability);   // ordered as children().all()
+}
+
 /** The single failure type: one HostFailureCode (table below) and the subject it concerns. */
 public final class ComponentHostException extends RuntimeException {
     public HostFailureCode code();
