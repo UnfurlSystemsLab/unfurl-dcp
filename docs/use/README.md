@@ -340,6 +340,24 @@ outputs, or DTOs alone.
 
 ---
 
+## Optional capabilities: the contract decides
+
+Some capabilities are optional: a composition may include them or leave them out. Identity
+(`identity-context`, for example a Keycloak adapter) is the common one. A component built on
+`unfurl-dcp` decides whether such a capability is in use from the composition contract alone
+(DCP `AGENTS.md` §4a):
+
+- **Present** when the accepted composition has a child contract whose binding names the capability
+  (`FrozenContract.contract().binding().providerCapability()`), with its runtime binding holding the
+  settings. Use it fully through its standard protocol, with no downgraded mode; if your component
+  cannot, refuse to start.
+- **Absent** when there is no such child contract. Keep working, with the behavior your docs define
+  for its absence.
+
+Decide once, at startup, from the contracts and bindings you hydrated (your `ContractStore`), never
+from an environment variable, a profile or a reachability check. Test both paths. The adapter
+template (`docs/templates/AGENTS-dcp-adapter.md` §13) has the full rule.
+
 ## What `unfurl-dcp` does *not* do
 
 - It is **not** a runtime workflow engine — it gives a host the ability to register capabilities, but the host runs work. See `unfurl-flow`.
