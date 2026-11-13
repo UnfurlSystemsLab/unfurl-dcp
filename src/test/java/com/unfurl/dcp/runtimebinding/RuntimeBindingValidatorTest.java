@@ -20,6 +20,20 @@ class RuntimeBindingValidatorTest {
                 .anySatisfy(diagnostic -> assertThat(diagnostic.code()).isEqualTo(ErrorCode.BINDING_INLINE_SECRET));
     }
 
+    /** secret_refs hold secret:// references: those pass, anything else is refused as inline material. */
+    @Test
+    void acceptsOnlySecretReferencesInSecretRefs() {
+        RuntimeBinding references = validBinding(new Configuration(Map.of(), Map.of(),
+                Map.of("urn:unfurl:foundry", new SecretRef("secret://acme/identity/foundry-service"))));
+        RuntimeBinding inline = validBinding(new Configuration(Map.of(), Map.of(),
+                Map.of("urn:unfurl:foundry", new SecretRef("s3cret"))));
+
+        assertThat(validator.validate(references, Fixtures.validContract()).diagnostics())
+                .noneSatisfy(diagnostic -> assertThat(diagnostic.code()).isEqualTo(ErrorCode.BINDING_INLINE_SECRET));
+        assertThat(validator.validate(inline, Fixtures.validContract()).diagnostics())
+                .anySatisfy(diagnostic -> assertThat(diagnostic.fieldPath()).isEqualTo("configuration.secret_refs.urn:unfurl:foundry"));
+    }
+
     @Test
     void rejectsRuntimePolicyFirewallOverrides() {
         RuntimeBinding binding = validBinding(new Configuration(Map.of("trustTier", "SELF")));
