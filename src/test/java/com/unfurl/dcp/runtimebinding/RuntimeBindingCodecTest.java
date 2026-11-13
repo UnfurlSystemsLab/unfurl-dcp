@@ -54,6 +54,7 @@ class RuntimeBindingCodecTest {
                       configuration:
                         values: { accountRef: primary }
                         config_refs: { maxRows: { uri: "config://demo/kotak/max-rows" } }
+                        secret_refs: { "urn:unfurl:foundry": { uri: "secret://demo/identity/foundry-service" } }
                       lifecycle: { enabled: true }
                 """;
         RuntimeBindingSet set = RuntimeBindingCodec.read(yaml.getBytes(StandardCharsets.UTF_8));
@@ -63,6 +64,9 @@ class RuntimeBindingCodecTest {
         assertThat(binding.providerInstance().deploymentKind()).isEqualTo(DeploymentKind.IN_PROCESS);
         assertThat(binding.configuration().values()).containsEntry("accountRef", "primary");
         assertThat(binding.configuration().configRefs()).containsEntry("maxRows", new ConfigRef("config://demo/kotak/max-rows"));
+        assertThat(binding.configuration().secretRefs())
+                .containsEntry("urn:unfurl:foundry", new SecretRef("secret://demo/identity/foundry-service"));
+        assertThat(new String(RuntimeBindingCodec.write(set), StandardCharsets.UTF_8)).contains("secret_refs");
     }
 
     /** Anything but exactly one well-formed set is refused, and the message never repeats document content. */

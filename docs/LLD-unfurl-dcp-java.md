@@ -571,6 +571,10 @@ public enum DeploymentKind { IN_PROCESS, CONTAINER, REMOTE_SERVICE, EXTERNAL_SAA
 
 public record SecretRef(@NotBlank String uri) { ... }       // reference only
 public record ConfigRef(@NotBlank String uri) { ... }
+// configuration.values (non-secret), config_refs (config://) and secret_refs (secret://, HLD-C2 configuration): a
+// binding that needs several secrets, such as an identity binding's per-service client credentials, names each one
+// in secret_refs instead of inlining it in values. The validator requires every secret_refs entry to be secret://.
+public record Configuration(Map<String, Object> values, Map<String, ConfigRef> configRefs, Map<String, SecretRef> secretRefs)
 public record RuntimeBindingMetadata(Map<String, Object> extensions) { ... }
 ```
 
