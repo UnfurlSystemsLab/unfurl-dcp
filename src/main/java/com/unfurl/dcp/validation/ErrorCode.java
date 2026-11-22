@@ -34,6 +34,8 @@ public enum ErrorCode {
     CLAIM_DOCUMENTATION_OPERATION_DUPLICATE,
     CLAIM_DOCUMENTATION_MEDIA_TYPE,
     CLAIM_DOCUMENTATION_HINT_ONLY,
+    /** An external_protocol offer without a non-blank details.protocol, or with documentation (HLD-C2 A.6). */
+    CLAIM_EXTERNAL_PROTOCOL_INVALID,
     // An offer named with a capability the DCP HTTP binding reserves (HLD-C2 G.3: "registrations").
     CLAIM_CAPABILITY_RESERVED,
     CLAIM_API_DOCUMENT_INVALID,

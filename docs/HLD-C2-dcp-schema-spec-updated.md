@@ -152,7 +152,7 @@ offers:
     description:  string     # required
     consumer_access: enum[any, named_components_only]  # required
     interface:                 # required
-      kind:    enum[http_api, event_stream, negotiation, in_process]  # required
+      kind:    enum[http_api, event_stream, negotiation, in_process, external_protocol]  # required
       details: map<string, any>   # required, kind-specific (endpoints, spec_url, format, transport...)
     stability:    enum[experimental, evolving, stable, deprecated]  # required
     version:      semver       # required (the offer is a versioned contract)
@@ -198,6 +198,15 @@ Rules:
   (G.1), never by inferring a schema.
 - Free-form schema hints inside `interface.details` (for example `input_schema` / `output_schema` path strings) are not
   documentation proof. Claims MUST state payload schemas through `documentation`.
+- `kind: external_protocol` declares an offer that consumers reach over a standard protocol of the provider's own, never
+  through the DCP invocation envelope (G.3). For example, an identity provider's `identity-context` is reached over
+  OAuth 2.0: consumers verify the tokens it issues and call its token endpoint.
+  - Its `details` MUST carry `protocol`, a non-blank name of that protocol (for example `oauth2`). Other detail keys are
+    matchable as for any kind, so a need may require `protocol: oauth2`.
+  - It has no DCP payload, so it MUST NOT carry `documentation`.
+  - The kind is a fact about the offer, not about its deployment. The same claim holds whether the provider is deployed
+    with the composition (for example as a container) or is one the customer already runs; the binding's
+    `deployment_kind` (C) records which, and documentation lists the offer the same way in both cases (G.1).
 
 Example:
 
@@ -608,6 +617,9 @@ Rules:
 - An `in_process` provider has no endpoint: it is reached through its host, the contract's consumer party. Providers
   with `external_saas` or `webapp` kind are not DCP-HTTP invocable. Their bindings carry config and secret references,
   not a DCP endpoint.
+- A provider whose offer is `external_protocol` (A.6) is not DCP-HTTP invocable either, whatever its `deployment_kind`.
+  Its binding has no `base_url`: the protocol's own endpoints are configuration values and references (for identity,
+  `token_endpoint` and `verification_keys`).
 - A binding that needs an endpoint and has none is incomplete. Documentation projection (G) uses the binding as its
   only endpoint source; endpoints taken from environment variables, profiles, DNS or orchestrator lookups, or network
   probing are not DCP state and are never documented.
@@ -842,7 +854,10 @@ All `http` entries that share a service root MUST pin the same provider componen
 claim hash. A root is one host. Two different pinned providers on one root fail the projection with
 `SERVICE_ROOT_CONFLICT`, because the host check would otherwise have no single expected identity.
 
-An entry's **invocation surface** follows from its runtime binding (C):
+An entry's **invocation surface** follows from its provider offer (A.6) and its runtime binding (C). An entry whose
+provider offer has interface kind `external_protocol` is `external`, whatever its deployment kind: it is listed, never
+probed and never a documentation gap, both when the provider is deployed with the composition and when the customer
+runs it. Every other entry takes its surface from the binding's `deployment_kind`:
 
 | Binding `deployment_kind` | Surface | Documented as |
 |---|---|---|
@@ -1215,7 +1230,7 @@ documentation_report:
 | `HOST_CLAIM_MISMATCH` | `inactive` | The report's `component_uri`, `component_version` or `claim_hash` differs from the host pinned for that service root. Every entry on the root gets this reason. |
 | `CLAIM_MISMATCH` | `inactive` | The host check passed, but the registration's provider claim URI, version or hash differs from the entry's pin. |
 | `NOT_REGISTERED` | `inactive` | The report was obtained but does not list the contract id and version. |
-| `EXTERNAL_SURFACE` | `not_probed` | An `external` entry. It is listed, never probed. |
+| `EXTERNAL_SURFACE` | `not_probed` | An `external` entry: an `external_saas` or `webapp` binding, or an `external_protocol` offer (G.1). It is listed, never probed. |
 
 A documentation gap (G.1) is not a report reason, because no report is produced when one exists. The projector fails
 with `DOCUMENTATION_GAP`, naming every gap.

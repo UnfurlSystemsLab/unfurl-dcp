@@ -24,7 +24,8 @@ import java.util.Set;
  * Validator: the documentation gap gate and the post-projection re-check (DCP HLD-C2 G.1, G.5).
  *
  * <p>{@link #gaps} is static: an entry that is HTTP or hosted, not private, and whose provider offer has no
- * documentation operations is a gap. Fabric runs it before emitting a visibility policy, and
+ * documentation operations is a gap. An {@code external_protocol} offer makes its entry external, so it is never a gap,
+ * whatever its deployment kind. Fabric runs it before emitting a visibility policy, and
  * {@link DocumentationProjector#plan} runs it before projecting. A schema is never inferred.
  *
  * <p>{@link #validate} re-checks a produced projection against its inputs, so a projection can be audited independently of
@@ -44,16 +45,32 @@ public final class CapabilityDocumentationValidator {
      */
     public List<DocumentationGap> gaps(VerifiedComposition composition, Map<ClaimKey, Claim> claims,
                                        List<RuntimeBinding> bindings, VisibilityPolicy policy) {
+        return gaps(composition.children().all().stream().map(VerifiedContract::contract).toList(), claims, bindings, policy);
+    }
+
+    /**
+     * Finds every documentation gap over child contracts that are not loaded as a verified set yet: a tool that emits a
+     * visibility policy (Fabric's binding generator) has the signed children and the claims they pin, but no runtime
+     * bundle. The rule is the same one {@link #gaps(VerifiedComposition, Map, List, VisibilityPolicy)} applies.
+     *
+     * @param children the composition's child contracts
+     * @param claims   provider claims by identity, already checked against the hashes the children pin
+     * @param bindings the children's runtime bindings (they decide each entry's surface)
+     * @param policy   the visibility policy that would be emitted
+     * @return every gap, sorted by contract id; empty when there is none
+     */
+    public List<DocumentationGap> gaps(List<CompositionContract> children, Map<ClaimKey, Claim> claims,
+                                       List<RuntimeBinding> bindings, VisibilityPolicy policy) {
         Map<URI, RuntimeBinding> byContract = new HashMap<>();
         bindings.forEach(binding -> byContract.put(binding.contractId(), binding));
         List<DocumentationGap> gaps = new ArrayList<>();
-        for (VerifiedContract child : composition.children().all()) {
-            CompositionContract contract = child.contract();
+        for (CompositionContract contract : children) {
             String capability = contract.binding().providerCapability();
-            EntrySurface surface = Entries.surfaceOf(contract, byContract.get(contract.contractId()));
-            if (!Entries.mustBeDocumented(surface, policy.ofCapability(capability))) continue;
             Claim claim = claims.get(new ClaimKey(contract.parties().provider().claimUri(), contract.parties().provider().claimVersion()));
-            boolean documented = claim != null && Entries.offer(claim, capability).map(Entries::documented).orElse(false);
+            Offer offer = claim == null ? null : Entries.offer(claim, capability).orElse(null);
+            EntrySurface surface = Entries.surfaceOf(contract, byContract.get(contract.contractId()), offer);
+            if (!Entries.mustBeDocumented(surface, policy.ofCapability(capability))) continue;
+            boolean documented = offer != null && Entries.documented(offer);
             if (!documented) {
                 gaps.add(new DocumentationGap(contract.contractId(), capability, contract.parties().provider().claimUri()));
             }

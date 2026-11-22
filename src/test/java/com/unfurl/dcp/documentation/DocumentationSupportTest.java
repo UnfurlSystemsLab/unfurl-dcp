@@ -228,6 +228,31 @@ class DocumentationSupportTest {
                 .satisfies(e -> assertThat(((DocumentationArtifactStore.ArtifactUnavailableException) e).code()).isEqualTo(ErrorCode.ARTIFACT_UNAVAILABLE));
     }
 
+    /**
+     * An unrelated oversized entry (a fat jar's nested jar) never makes an archive store unusable: only a reference that
+     * names it fails, with ARTIFACT_UNAVAILABLE. The byte factory reads the bytes it was given, not a file.
+     */
+    @Test
+    void onlyAReferencedOversizedEntryFails() throws Exception {
+        byte[] bytes = "{\"type\":\"object\"}".getBytes(StandardCharsets.UTF_8);
+        ArtifactRef ref = ArtifactRef.of("dcp/s.json", ArtifactMediaType.SCHEMA_JSON, bytes);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry("BOOT-INF/lib/big.jar"));
+            zip.write(new byte[PackagedArtifactStore.MAX_ENTRY_BYTES + 1]);
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("dcp/s.json"));
+            zip.write(bytes);
+            zip.closeEntry();
+        }
+        PackagedArtifactStore archive = PackagedArtifactStore.fromArchiveBytes(out.toByteArray(), "fat.jar");
+
+        assertThat(archive.read(ref)).isEqualTo(bytes);
+        assertThatThrownBy(() -> archive.read(new ArtifactRef("BOOT-INF/lib/big.jar", ArtifactMediaType.SCHEMA_JSON, ref.sha256())))
+                .hasMessageContaining("larger than")
+                .satisfies(e -> assertThat(((DocumentationArtifactStore.ArtifactUnavailableException) e).code()).isEqualTo(ErrorCode.ARTIFACT_UNAVAILABLE));
+    }
+
     /** The artifact validator's payload-schema and API-document rules. */
     @Test
     void artifactValidatorRules() {

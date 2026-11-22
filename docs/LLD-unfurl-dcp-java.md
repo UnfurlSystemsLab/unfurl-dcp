@@ -373,7 +373,9 @@ public record ApiDocument(String apiId, String description, ArtifactRef openapi,
 // document their offers use the canonical constructors.
 public enum ConsumerAccess { ANY, NAMED_COMPONENTS_ONLY }
 public enum Stability { EXPERIMENTAL, EVOLVING, STABLE, DEPRECATED }
-public enum InterfaceKind { HTTP_API, EVENT_STREAM, NEGOTIATION, IN_PROCESS }
+public enum InterfaceKind { HTTP_API, EVENT_STREAM, NEGOTIATION, IN_PROCESS, EXTERNAL_PROTOCOL }
+// EXTERNAL_PROTOCOL (HLD-C2 A.6): reached over the provider's own standard protocol (details.protocol), never through
+// the DCP invocation envelope; it never carries documentation, and its documentation entry is always EXTERNAL (G.1).
 
 public record ConflictResolution(
         List<OverlappingConcern> overlappingConcerns,
@@ -419,6 +421,8 @@ or `FaultPolicy.empty()` explicitly so missing fault vocabulary is caught during
   (`CLAIM_API_DOCUMENT_INVALID`).
 - No offer's `capability` is `registrations`, the name the DCP HTTP binding reserves for `GET /dcp/registrations`
   (HLD-C2 G.3, `CLAIM_CAPABILITY_RESERVED`).
+- An `EXTERNAL_PROTOCOL` offer (HLD-C2 A.6) has a non-blank string `details.protocol` and no `documentation`
+  (`CLAIM_EXTERNAL_PROTOCOL_INVALID`): it is never invoked through the DCP envelope, so it has no DCP payload.
 - An `offerInterface.details` that carries `input_schema` or `output_schema` keys while the offer has no
   `documentation` produces a WARNING, `CLAIM_DOCUMENTATION_HINT_ONLY`, pointing at A.6. It is a warning so existing
   claims keep loading during migration; the hint never counts as documentation.
@@ -867,9 +871,13 @@ public interface DocumentationArtifactStore {
 }
 // Adapter: deployment bundle layout `artifacts/sha256/<sha256>` (HLD-C2 A.12), resolved by hash.
 public final class ContentAddressedArtifactStore implements DocumentationArtifactStore { ... }
-// Adapter: a component's own artifact, resolved by `path`. Two factories, one behaviour:
-//   fromClassLoader(loader) - a running host reading its own jar (the host view);
-//   fromArchive(Path jar)   - a reader of a jar as data, never loading classes (Fabric's catalog scan).
+// Adapter: a component's own artifact, resolved by `path`. Several factories, one behaviour:
+//   fromClassLoader(loader)         - a running host reading its own jar (the host view);
+//   fromArchive(Path jar)           - a reader of a jar as data, never loading classes (Fabric's catalog scan);
+//   fromArchiveBytes(byte[], name)  - the same over bytes the reader already holds and hashed (Fabric's scanner).
+// The archive factories hold the jar's bytes once and locate an entry only when a reference names it; only a referenced
+// entry over 16 MiB fails (ARTIFACT_UNAVAILABLE), so an unrelated large entry such as a fat jar's nested jar is harmless.
+//   fromResources(resources)        - an admitted component's verified in-memory snapshot.
 public final class PackagedArtifactStore implements DocumentationArtifactStore { ... }
 ```
 
@@ -918,10 +926,15 @@ There is no other endpoint source: no environment variable, profile or lookup (H
 
 `CapabilityDocumentationValidator.gaps(VerifiedComposition, Map<ClaimKey, Claim>, List<RuntimeBinding>, VisibilityPolicy)`
 takes the bindings because they decide each entry's surface, and returns every
-`DocumentationGap(contractId, capability, providerClaimUri)`. A gap is an entry whose surface is `HTTP` or
+`DocumentationGap(contractId, capability, providerClaimUri)`. The surface is `Entries.surfaceOf(contract, binding,
+offer)`: `EXTERNAL` when the provider offer's interface kind is `EXTERNAL_PROTOCOL`, whatever the binding's deployment
+kind (HLD-C2 G.1), and otherwise `EntrySurface.of(deploymentKind)`. The gap gate and `DocumentationProjector.plan` use
+that one helper, so they cannot disagree; an `EXTERNAL` entry is never a gap and never probed. A gap is an entry whose surface is `HTTP` or
 `HOSTED_IN_PROCESS`, whose visibility is not `PRIVATE`, and whose provider offer has no `documentation` or an empty
 `operations` list (HLD-C2 G.1).
-The check is static. Fabric calls it before emitting a visibility policy, and `DocumentationProjector.plan` calls it and
+An overload, `gaps(List<CompositionContract> children, claims, bindings, policy)`, applies the same rule to child
+contracts that are not loaded as a verified set yet: Fabric's binding generator holds the signed children and the claims
+they pin, but no runtime bundle. The check is static. Fabric calls it before emitting a visibility policy, and `DocumentationProjector.plan` calls it and
 throws `DocumentationGapException` (`DOCUMENTATION_GAP`, naming every gap) when the result is not empty.
 
 #### Projector (Builder: static plan, then cheap re-projection)
@@ -2263,6 +2276,8 @@ Unit tests:
   - a claim without the new fields keeps its pre-change canonical hash (golden hash of an existing claim);
   - `ArtifactRef` path and hash shape rules;
   - `CLAIM_DOCUMENTATION_HINT_ONLY` is a warning, not an error;
+  - an `EXTERNAL_PROTOCOL` offer without `details.protocol`, or with `documentation`, is
+    `CLAIM_EXTERNAL_PROTOCOL_INVALID`; one with a protocol and no documentation is valid;
   - an offer named `registrations` is `CLAIM_CAPABILITY_RESERVED`;
   - `@JsonAlias` reads both `offer_interface` and `interface`.
 - `RuntimeBindingValidator` rejects an HTTP-kind `baseUrl` without the `/dcp/<capability>` suffix

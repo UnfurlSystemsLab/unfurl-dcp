@@ -102,6 +102,30 @@ public final class ClaimValidator {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "cost_implications are required for metered or negotiation offers", "offers.cost_implications"));
         }
         validateDocumentation(offer, diagnostics);
+        validateExternalProtocol(offer, diagnostics);
+    }
+
+    /**
+     * Helper: validates an {@code external_protocol} offer (DCP HLD-C2 A.6). It names its protocol in a non-blank string
+     * {@code details.protocol}, and carries no {@code documentation}, because it is never invoked through the DCP
+     * envelope and so has no DCP payload. Offers of every other kind are not affected.
+     */
+    private void validateExternalProtocol(Offer offer, List<Diagnostic> diagnostics) {
+        if (offer.offerInterface() == null || offer.offerInterface().interfaceKind() != InterfaceKind.EXTERNAL_PROTOCOL) {
+            return;
+        }
+        String at = "offers[" + offer.capability() + "]";
+        Object protocol = offer.offerInterface().details().get("protocol");
+        if (!(protocol instanceof String name) || name.isBlank()) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_EXTERNAL_PROTOCOL_INVALID,
+                    "an external_protocol offer names its protocol in a non-blank interface.details.protocol",
+                    at + ".interface.details.protocol"));
+        }
+        if (offer.documentation() != null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_EXTERNAL_PROTOCOL_INVALID,
+                    "an external_protocol offer is never invoked through the DCP envelope, so it has no documentation",
+                    at + ".documentation"));
+        }
     }
 
     /**
