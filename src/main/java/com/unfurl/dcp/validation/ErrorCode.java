@@ -28,5 +28,23 @@ public enum ErrorCode {
     DCP_VERSION_UNSUPPORTED,
     BROKER_ACCEPT_INVALID,
     CONTRACT_NOT_FOUND,
-    CONTRACT_INVALIDATED
+    CONTRACT_INVALIDATED,
+    // Documentation fields of a claim (DCP HLD-C2 A.6, A.12, A.13), checked by ClaimValidator on the claim alone.
+    CLAIM_DOCUMENTATION_INCOMPLETE,
+    CLAIM_DOCUMENTATION_OPERATION_DUPLICATE,
+    CLAIM_DOCUMENTATION_MEDIA_TYPE,
+    CLAIM_DOCUMENTATION_HINT_ONLY,
+    // An offer named with a capability the DCP HTTP binding reserves (HLD-C2 G.3: "registrations").
+    CLAIM_CAPABILITY_RESERVED,
+    CLAIM_API_DOCUMENT_INVALID,
+    ARTIFACT_REF_INVALID,
+    // Shipped documentation artifacts, checked by ClaimArtifactValidator, which holds the bytes.
+    ARTIFACT_UNAVAILABLE,
+    ARTIFACT_HASH_MISMATCH,
+    SCHEMA_DOCUMENT_INVALID,
+    SCHEMA_ROOT_NOT_OBJECT,
+    API_DOCUMENT_INVALID,
+    API_DOCUMENT_PATH_CONFLICT,
+    // Runtime binding endpoint shape for HTTP-served providers (DCP HLD-C2 C, G.3).
+    RUNTIME_BINDING_ENDPOINT_SHAPE
 }

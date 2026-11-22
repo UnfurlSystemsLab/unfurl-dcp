@@ -67,6 +67,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class InProcessComponentHostTest {
     private static final Party HOST = new Party(URI.create("urn:consumer"), "1.0.0");
+    /** A documentation resource shipped in the component jar, read back through the admission evidence. */
+    private static final String SHIPPED_SCHEMA = "dcp/schemas/tool.a.request.schema.json";
     private static final ExecutionContext STARTUP =
             new ExecutionContext("demo", "startup", List.of(), List.of(), "corr", "req", Map.of(), Map.of());
     private static final String CONFIG = """
@@ -168,6 +170,18 @@ class InProcessComponentHostTest {
         assertThat(report.registrars().get("urn:provider@1.0.0").getClass().getClassLoader()).isNotSameAs(inside);
         assertThat(Thread.currentThread().getContextClassLoader()).isSameAs(caller);
         assertThat(report.operations()).extracting(HostReport.AdmittedOperation::capability).containsExactly("tool.a", "tool.b");
+        // Admission evidence: the verified claim and pin, and resources read from the verified snapshot, not from disk.
+        assertThat(report.components()).containsOnlyKeys("urn:provider@1.0.0");
+        HostReport.AdmittedComponent evidence = report.components().get("urn:provider@1.0.0");
+        assertThat(evidence.claim()).isEqualTo(setup.packagedClaim);
+        assertThat(evidence.pin()).isEqualTo(setup.pin);
+        Files.delete(setup.home.resolve("component.jar"));
+        byte[] schema = evidence.resources().read(SHIPPED_SCHEMA).orElseThrow();
+        assertThat(new String(schema, StandardCharsets.UTF_8)).isEqualTo("{\"type\":\"object\"}");
+        schema[0] = 'X';
+        assertThat(evidence.resources().read(SHIPPED_SCHEMA).orElseThrow()[0]).isEqualTo((byte) '{');
+        assertThat(evidence.resources().read("dcp/schemas/missing.json")).isEmpty();
+        assertThat(evidence.resources().read("/" + SHIPPED_SCHEMA)).isEmpty();
         assertThat(report.ignoredArtifacts()).containsExactly("stray.jar");
         assertThat(report.notHostedContracts()).containsExactly("urn:contract:remote@1.0.0");
         HostReport.AdmittedOperation first = report.operations().get(0);
@@ -430,6 +444,7 @@ class InProcessComponentHostTest {
             if (contracts != null) return;
             Map<String, byte[]> entries = new LinkedHashMap<>(classes);
             entries.put("META-INF/unfurl-catalog.yaml", HostFixtures.manifest(packagedClaim));
+            entries.put(SHIPPED_SCHEMA, "{\"type\":\"object\"}".getBytes(StandardCharsets.UTF_8));
             entries.put(PinnedJarArtifacts.ACTIVATION_DECLARATION, "example.hosted.ToolActivation".getBytes(StandardCharsets.UTF_8));
             if (configYaml != null) entries.put("META-INF/unfurl-config.yaml", configYaml.getBytes(StandardCharsets.UTF_8));
             Path jar = ComponentJars.jar(home.resolve("component.jar"), entries, Map.of());

@@ -13,6 +13,11 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  */
 @AnalyzeClasses(packages = "com.unfurl.dcp", importOptions = ImportOption.DoNotIncludeTests.class)
 class DcpArchitectureTest {
+    /** Ports and Adapters: the schema-validation vendor is confined to its offline adapter. */
+    @ArchTest
+    static final ArchRule schema_library_is_confined_to_adapter =
+            noClasses().that().doNotHaveFullyQualifiedName("com.unfurl.dcp.documentation.HarrelSchemaSyntaxValidator")
+                    .should().dependOnClassesThat().resideInAPackage("dev.harrel.jsonschema..");
     @ArchTest
     static final ArchRule broker_does_not_import_design_time_packages =
             noClasses().that().resideInAPackage("..broker..")
@@ -23,11 +28,42 @@ class DcpArchitectureTest {
             noClasses().that().resideInAPackage("..broker..")
                     .should().dependOnClassesThat().haveFullyQualifiedName("com.unfurl.substrate.ports.CapabilityRegistry");
 
-    /** The in-process host sits on top of the broker; nothing else in DCP depends on it (LLD, In-Process Component Host). */
+    /**
+     * The in-process host sits on top of the broker; nothing else in DCP depends on it (LLD, In-Process Component Host),
+     * except that documentation reads the host's verified-set and admission-evidence value types (LLD, Capability
+     * Documentation Projection), and only those.
+     */
     @ArchTest
     static final ArchRule only_the_host_depends_on_the_host =
-            noClasses().that().resideOutsideOfPackage("com.unfurl.dcp.host..")
+            noClasses().that().resideOutsideOfPackages("com.unfurl.dcp.host..", "com.unfurl.dcp.documentation..")
                     .should().dependOnClassesThat().resideInAPackage("com.unfurl.dcp.host..");
+
+    /** The host value types documentation may use. */
+    private static final java.util.Set<String> DOCUMENTATION_HOST_TYPES = java.util.Set.of(
+            "com.unfurl.dcp.host.VerifiedComposition",
+            "com.unfurl.dcp.host.VerifiedContracts",
+            "com.unfurl.dcp.host.VerifiedContract",
+            "com.unfurl.dcp.host.ProviderArtifactPin",
+            "com.unfurl.dcp.host.ArtifactPin",
+            "com.unfurl.dcp.host.HostReport",
+            "com.unfurl.dcp.host.HostReport$AdmittedComponent",
+            "com.unfurl.dcp.host.PackagedResources");
+
+    /** The documentation package's only host imports are value types; it never reaches the host itself. */
+    @ArchTest
+    static final ArchRule documentation_uses_only_host_value_types =
+            noClasses().that().resideInAPackage("com.unfurl.dcp.documentation..")
+                    .should().dependOnClassesThat(com.tngtech.archunit.base.DescribedPredicate.describe(
+                            "a host class other than its value types",
+                            (com.tngtech.archunit.core.domain.JavaClass target) ->
+                                    target.getPackageName().startsWith("com.unfurl.dcp.host")
+                                            && !DOCUMENTATION_HOST_TYPES.contains(target.getName())));
+
+    /** The host never depends on documentation. */
+    @ArchTest
+    static final ArchRule host_does_not_depend_on_documentation =
+            noClasses().that().resideInAPackage("com.unfurl.dcp.host..")
+                    .should().dependOnClassesThat().resideInAPackage("com.unfurl.dcp.documentation..");
 
     /** The deep-copy utility is a leaf: it uses only the JDK, so every DCP package may depend on it. */
     @ArchTest
@@ -65,7 +101,8 @@ class DcpArchitectureTest {
                             "..questions..",
                             "..resolver..",
                             "..versioning..",
-                            "..validation..")
+                            "..validation..",
+                            "..documentation..")
                     .should().dependOnClassesThat().resideInAnyPackage("..broker..", "..spi..");
 
     @ArchTest

@@ -135,6 +135,29 @@ public final class PinnedJarArtifacts implements AutoCloseable {
     }
 
     /**
+     * Returns a read-only view of the resources in the pin's claim-bearing artifact, over the same in-memory snapshot that
+     * was hashed against the pin (admission evidence for documentation). Each read resolves the path as the JDK does for
+     * the running Java version and returns a copy, so callers can never change the snapshot.
+     *
+     * @return empty when the pin was not inspected
+     */
+    public Optional<PackagedResources> packagedResources(ProviderArtifactPin pin) {
+        Component component = components.get(pin);
+        if (component == null) {
+            return Optional.empty();
+        }
+        PinnedArtifact claimArtifact = component.artifacts.get(0);
+        return Optional.of(path -> {
+            if (path == null || path.isEmpty() || path.startsWith("/")) {
+                return Optional.empty();
+            }
+            String realName = claimArtifact.realName(path);
+            byte[] bytes = realName == null ? null : claimArtifact.content(realName);
+            return bytes == null ? Optional.empty() : Optional.of(bytes.clone());
+        });
+    }
+
+    /**
      * Returns the bytes of {@code META-INF/unfurl-config.yaml} from the pin's claim-bearing artifact, for the host to
      * parse with {@link ComponentConfigurationSchema#parse}; empty when the component packages no configuration.
      */

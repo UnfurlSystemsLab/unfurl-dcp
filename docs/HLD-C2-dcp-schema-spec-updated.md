@@ -17,7 +17,7 @@ This document defines the DCP schemas, specified together because they are proje
 - **D. Webapp manifest schema** (frontend projection of the claim).
 - **E. Negotiation question schema** (Plane 2 structure; H2C interview = C2C prompt).
 - **F. Design-time action context schema** (Plane 2 input) -- selected authoring/edit intent used to ask targeted questions.
-- **G. Capability documentation projection** (runtime-facing docs) -- Swagger/OpenAPI/AsyncAPI/MCP docs from accepted DCP surfaces only.
+- **G. Capability documentation projection** (runtime-facing docs) -- Swagger/OpenAPI/AsyncAPI/MCP docs from accepted DCP surfaces only, the DCP HTTP binding they document, and the registration report that proves a capability is registered.
 
 Notation: types are given as `string`, `int`, `bool`, `enum[...]`, `list<T>`, `map<K,V>`, `uri`, `semver`, `semver_range`, `timestamp`, `secret_ref`, and `config_ref`. `?` marks optional. All schemas are expressed in YAML; JSON is equivalent.
 
@@ -52,7 +52,11 @@ negotiation_surface: # A.8  optional (required if kind == intelligent_component)
 integration_ports:   # A.9  optional standard ports exposed/required by the component
 faults:              # A.10 required, may be empty; declared runtime fault vocabulary
 metadata:            # A.11 required
+api_documents:       # A.13 optional; product HTTP API documents shipped with the component
 ```
+
+`artifact_ref` (A.12) is a shared value type used by `offers[].documentation` and `api_documents`; it is not a
+top-level section.
 
 ### A.2 identity (required)
 
@@ -153,6 +157,13 @@ offers:
     stability:    enum[experimental, evolving, stable, deprecated]  # required
     version:      semver       # required (the offer is a versioned contract)
     cost_implications: string?   # optional but required when the offer incurs measurable cost
+    documentation:             # optional; required when the offer is documented (G.1)
+      summary: string?         # optional one-line summary of the capability for generated documentation
+      operations:              # required, non-empty: one entry per `invocation.operation` value the offer accepts
+        - operation:       string         # required; the exact `invocation.operation` value; unique within the offer
+          summary:         string?        # optional one-line summary of this operation
+          request_schema:  artifact_ref   # required: JSON Schema of this operation's `invocation.input` (A.12, G.3)
+          response_schema: artifact_ref   # required: JSON Schema of this operation's successful `output` (A.12, G.3)
 ```
 
 Rules:
@@ -161,6 +172,32 @@ Rules:
 - A capability offer is the surface a Plane 2 contract binds against (a consumer *need* → a provider *offer*).
 - `interface.details` is part of the offer's deterministic structure, not free-form prose. A consumer need may require a subset of detail keys, and the resolver must accept only offers whose details satisfy that subset. Scalar values match by equality; list values match by containment; map values match recursively by subset.
 - Capabilities that support multiple execution modes declare them in details so mode selection is governed by DCP rather than hidden in local deployment metadata. Standard keys are `execution_modes`, `default_execution_mode`, and `mode_policies`.
+- `documentation` states the offer's invocation payload schemas for generated documentation (G). It is not part of the
+  offer's matchable structure: the resolver never matches on it, and adding or changing it never changes which needs
+  the offer satisfies. It changes the claim hash like any other claim field, so a contract's pinned claim hash also pins
+  the schemas.
+- Schemas are per **operation**, and an operation is selected by the envelope's `invocation.operation` (G.3).
+  - Each entry's `request_schema` describes `invocation.input` and its `response_schema` describes a successful
+    result's `output`, *for that operation only*.
+  - A payload schema never inspects `invocation.operation`, because it only ever sees `input` or `output`. The
+    projection renders the selection at the envelope level (G.2), so operations whose inputs look alike (for example
+    `{}`) stay unambiguous.
+  - An offer with one operation lists exactly one entry.
+- A single operation that chooses its behaviour from a field *inside* `input` (for example an `action` field) states
+  that in its own request schema. That schema is a `oneOf` whose branches are mutually exclusive on that field (each
+  branch fixes it with `const`, or, for a defaulted value, requires it to be absent or equal to the default). This is
+  ordinary JSON Schema over `input`.
+- Both schemas of every operation MUST have a root `type: object`, because `input` and `output` are maps on the wire
+  (G.3). A component whose natural result is text or a list wraps it in a named property, for example
+  `{"markdown": "..."}` or `{"items": [...]}`.
+- `operation` values are non-blank and unique within the offer. The invocation envelope itself is defined once by the
+  DCP HTTP binding (G.3) and is not repeated per operation. Fault codes are taken from
+  `faults.emitted[].affects.offers` (A.10) and are not repeated here.
+- All schema refs MUST use `media_type: application/schema+json`. An offer without `documentation`, or with no
+  operations, has no documentable payload; whether that is acceptable is decided by the documentation projection
+  (G.1), never by inferring a schema.
+- Free-form schema hints inside `interface.details` (for example `input_schema` / `output_schema` path strings) are not
+  documentation proof. Claims MUST state payload schemas through `documentation`.
 
 Example:
 
@@ -338,6 +375,85 @@ metadata:
       purpose: enum[spec, api-spec, protocol, doc]
 ```
 
+`metadata.references` are informative links for readers. They are never documentation proof (G.1); a machine-readable
+API description is shipped through `api_documents` (A.13) instead.
+
+### A.12 artifact_ref (value type)
+
+An `artifact_ref` names one file shipped inside the component's own artifact, pinned by content hash.
+
+```yaml
+artifact_ref:
+  path:       string   # required; relative path inside the artifact that carries the packaged claim (HLD-C §3.10)
+  media_type: enum[application/schema+json, application/vnd.oai.openapi+json, application/vnd.oai.openapi+yaml]  # required
+  sha256:     string   # required; lower-case hex SHA-256 of the file's exact bytes (64 characters)
+```
+
+Rules:
+- `path` is resolved against the root of the artifact that carries the claim. It uses `/` separators and MUST NOT be
+  absolute or empty, or contain `..`, `\`, empty segments or a URI scheme. It SHOULD live under `dcp/`. There is no
+  default base and no lookup outside that artifact.
+- `sha256` freezes the content: a reference by path alone is mutable and is invalid. The claim hash covers the ref, so a
+  contract's pinned claim hash (B) transitively pins the file bytes.
+- A reader MUST verify `sha256` against the bytes before using the file. A missing file or a hash mismatch is a
+  validation failure. It is never a fallback to another copy, another version or an inferred document.
+- A composer that packages a deployment copies each referenced file unchanged and stores it content-addressed, as
+  `artifacts/sha256/<sha256>`, beside the deployment's claims. Deployment readers resolve a ref by its `sha256` in that
+  store; `path` keeps its meaning inside the component artifact. The claim itself is never rewritten.
+- JSON Schema files (`application/schema+json`) use JSON Schema draft 2020-12 and MUST be self-contained. Every `$ref`
+  is a JSON Pointer fragment into the same file (`"#"` or `"#/<pointer>"`). `$id`, `$anchor`, `$dynamicRef`,
+  `$dynamicAnchor` and `$recursiveRef` MUST NOT appear. A projector embeds the file inside a larger document and
+  rebases each pointer (G.2), and that is well-defined only for pointer fragments.
+- OpenAPI files use OpenAPI 3.1.0, whose schema dialect is the same draft, and MUST also be self-contained. Every
+  `$ref` targets the file's own `#/components/<section>/<name>` (optionally followed by a deeper pointer). The same
+  `$id` and anchor keywords are forbidden in their schemas.
+- Child and referenced DCPs: each claim's refs resolve only inside that claim's own artifact. A parent never resolves
+  a child's ref against the parent artifact, or the reverse.
+
+### A.13 api_documents (optional)
+
+`api_documents` ships machine-readable descriptions of the component's **product HTTP routes**: the routes it serves
+that are not DCP capability invocations, such as a workflow-management or operations API.
+
+```yaml
+api_documents:
+  - api_id:      string         # required, kebab-case, unique within the claim
+    description: string         # required
+    openapi:     artifact_ref   # required; media_type MUST be an OpenAPI media type (A.12)
+    surfaces:    list<string>   # required, non-empty, kebab-case; the served surfaces this document covers
+```
+
+Rules:
+- Paths in the document are relative to the component's service root (G.3). DCP invocation and registration paths
+  (`/dcp/...`, G.3) MUST NOT appear; those are projected from offers.
+- Every operation MUST carry the extension `x-dcp-surface: <surface>`, naming one entry of `surfaces`. At runtime a host
+  reports which surfaces it serves (G.3 registration report), and generated documentation includes only operations
+  whose surface is served. An operation without a declared surface fails validation.
+- The document MUST NOT declare `servers`, `security` or `components.securitySchemes`. The documentation projection
+  derives the server from the runtime binding and the security scheme from the composition's identity contract (G.1),
+  so a shipped document cannot claim a location or an authentication mode that the deployment does not have.
+- Every operation MUST carry `x-dcp-access`. There is no default:
+  - `public`: the host never requires a token for it, on either identity path (for example health routes, the host's
+    own documentation, static UI assets);
+  - `protected`: the host requires a bearer token whenever the composition has an identity contract that protects
+    this component.
+
+  An operation MAY carry `x-dcp-permission: <name>`, naming the permission the host checks; it is rendered as
+  documentation only. The projection turns access into security requirements (G.1), so the rendered document states
+  each exception exactly.
+- Within one component, no two `api_documents` may declare the same method and path. A conflict is a validation failure
+  (`API_DOCUMENT_PATH_CONFLICT`).
+- When several of a component's `api_documents` declare the same path, the projection merges their path items. Every
+  path-level member they share, other than `parameters`, must therefore be identical after component renaming (G.2).
+  A difference is a validation failure (`API_DOCUMENT_PATH_CONFLICT`). Path-level `parameters` apply only to their own
+  document's operations.
+- `api_documents` describe routes. They do not offer capabilities, are never matched by the resolver and never create
+  contracts. A product route that another component must call is a capability and belongs in `offers`.
+- An API document is documented only for a component that is the provider party of at least one documented child
+  contract (G.1), because the runtime binding of such a contract is the only source of the component's service root.
+- Child and referenced DCPs: a child's `api_documents` describe only that child. A parent claim never re-exports a
+  child's documents.
+
 ---
 
 ## B. Composition Contract Schema
@@ -484,6 +600,17 @@ Rules:
 - Runtime binding may disable a binding with `runtime_policy.enabled: false`, but it cannot alter claim ownership, dependency satisfaction, conflict decisions, trust tier, or invalidation rules.
 - Environment-specific values belong here, not in the claim or composition contract.
 - `base_url` and `base_url_ref` are mutually exclusive. Prefer `base_url_ref` outside local development.
+- A provider reached through the DCP HTTP binding (G.3) has `deployment_kind` `container`, `remote_service` or
+  `sidecar`. Its endpoint, whether given as `base_url` or resolved from `base_url_ref`, MUST be exactly
+  `<service_root>/dcp/<provider_capability>`, where `<provider_capability>` is the contract's
+  `binding.provider_capability`. The service root is never configured separately: it is that endpoint with the
+  `/dcp/<provider_capability>` suffix removed.
+- An `in_process` provider has no endpoint: it is reached through its host, the contract's consumer party. Providers
+  with `external_saas` or `webapp` kind are not DCP-HTTP invocable. Their bindings carry config and secret references,
+  not a DCP endpoint.
+- A binding that needs an endpoint and has none is incomplete. Documentation projection (G) uses the binding as its
+  only endpoint source; endpoints taken from environment variables, profiles, DNS or orchestrator lookups, or network
+  probing are not DCP state and are never documented.
 - Aggregate runtime bindings use the same DCP containment bridge as aggregate claims. Parent bindings reference child runtime bindings with `metadata.extensions.contains`, `children`, `containsClaimUris`, or `childClaimUris`; child bindings remain normal runtime bindings with their own contract pins, endpoint/config refs, secret refs, and runtime policy.
 - Assembly-level products MUST NOT introduce product-specific runtime wiring sections for child bindings. A multi-component deployment is represented as a DCP runtime-binding tree: one aggregate parent binding plus referenced child bindings, all resolved by walking the DCP containment refs.
 
@@ -684,47 +811,434 @@ Rules:
 Runtime-facing documentation such as OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, or generated SDK metadata
 is a projection of accepted and bound DCP capabilities. It is not produced by scanning implementation code alone.
 
+The projection is a deterministic function of the deployment's DCP state plus one runtime observation per service
+(G.3): the same inputs always produce the same documents, byte for byte. It works for any component in a verified
+composition; nothing in it is specific to one product.
+
+### G.1 Projection inputs and the documentation decision
+
+A projector reads only these inputs:
+
+1. **The verified composition**: the signed aggregate root contract and exactly its child closure (B, DCP
+   Aggregation), with every envelope verified against the deployment's trusted keys. An unverified set is never
+   projected.
+2. **Provider claims**: the claim of each child's provider party. Its canonical hash must equal the hash the child
+   contract pins. A mismatched or missing claim is a projection failure, never a skipped entry.
+3. **Claim artifacts**: every `artifact_ref` (A.12) those claims name, read from the deployment's content-addressed
+   store and verified by `sha256`.
+4. **Runtime bindings** for the children (C).
+5. **Registration reports** (G.3): one per service root, observed at runtime. This is the only runtime input, and it
+   is the "registered in the host runtime" proof.
+6. **Identity presence**: whether the verified set contains an identity contract (a child whose
+   `binding.provider_capability` is `identity-context`). This decides security schemes, and it is never read from
+   configuration.
+7. **Visibility policy**: a product-supplied map from capability names and `api_id`s to `public`, `internal` or
+   `private`, with a stated default. DCP records the policy in the output (`surfaces`); the product decides its values.
+
+Every child contract of the root is one **documentation entry**. The aggregate root has no entry of its own: it is the
+projection's `source.root_contract`.
+
+All `http` entries that share a service root MUST pin the same provider component: the same claim URI, version and
+claim hash. A root is one host. Two different pinned providers on one root fail the projection with
+`SERVICE_ROOT_CONFLICT`, because the host check would otherwise have no single expected identity.
+
+An entry's **invocation surface** follows from its runtime binding (C):
+
+| Binding `deployment_kind` | Surface | Documented as |
+|---|---|---|
+| `container`, `remote_service`, `sidecar` | `http` | An OpenAPI operation `POST /dcp/<capability>` on the provider's service root (G.3) |
+| `in_process` | `hosted_in_process` | A capability of its host, the consumer party. It has no HTTP operation of its own; it appears in the host's document under `x-dcp-hosted-capabilities` and in the human summary, documented from the hosted component's own claim. The host's registration report proves its registration. |
+| `external_saas`, `webapp` | `external` | Listed in the report and the human summary only. It is not DCP-HTTP invocable and is never probed. |
+
+An entry is **documented** (status `active`, G.4) only when every one of these holds:
+
+- it is in the verified child closure;
+- it has a runtime binding with `runtime_policy.enabled: true`;
+- for `http`: its endpoint is present, resolvable and of the shape `<service_root>/dcp/<capability>` (C);
+- **host check:** the registration report for the entry's service root was obtained, and it identifies the host the
+  deployment pins for that root. Its `component_uri`, `component_version` and `claim_hash` equal the pin of the
+  component that provides the root's `http` entries. For a `hosted_in_process` entry, the root is its consumer host's;
+- **provider check:** the report lists the entry's contract id and version, and that registration's
+  `provider_claim_uri`, `provider_claim_version` and `provider_claim_hash` equal the entry's own provider pin.
+  - For an `http` entry the provider is the host itself.
+  - For a `hosted_in_process` entry the provider is the hosted component, and the hash is the one the host verified
+    when it admitted that component.
+
+  A host therefore never has to impersonate the components it hosts;
+- its visibility is `public` or `internal`.
+
+Otherwise the entry is still in the output, in the report (G.4), with the reason it is not documented. **No entry is
+ever dropped silently.**
+
+**Documentation gap.** An entry with an `http` or `hosted_in_process` surface, a `public` or `internal` visibility, and
+a provider offer that has no `documentation` (A.6) is a documentation gap. A gap is decided from static inputs only:
+the verified set, the claims and the visibility policy. A tool that emits a deployment's visibility policy (for
+example as the projector's runtime binding configuration) MUST refuse to emit a policy that yields a gap. A projector
+MUST refuse to produce any documentation for a deployment that has one. A schema is never inferred.
+
+**Product API documents.** For each component that is the provider of at least one documented `http` entry, each
+`api_documents` item (A.13) whose `api_id` is visible is projected. Only operations whose `x-dcp-surface` appears in the
+component's reported `served_surfaces` are included. The others are listed in the report as `SURFACE_NOT_SERVED`.
+
+**Security schemes.** Security is rendered per operation, never as a document-wide default.
+
+- **With an identity contract** in the verified set, a component is **protected** when the identity binding names its
+  claim URI as an audience. For a protected component:
+  - its DCP invocation operations (`POST /dcp/<capability>`) carry an OAuth 2.0 bearer requirement and the `401`/`403`
+    responses;
+  - its product operations marked `x-dcp-access: protected` carry the same;
+  - its product operations marked `x-dcp-access: public` carry an explicit empty requirement (`security: []`), so the
+    document states the exception instead of implying a token.
+
+  An unprotected component's operations carry no requirement.
+- **Without an identity contract**, no operation carries security, no scheme is emitted, and the output states that the
+  composition runs unauthenticated on a trusted network.
+
+The two cases are mutually exclusive and are decided by the verified set alone. `x-dcp-permission` is copied through as
+documentation.
+
+**Freshness.** Every observation is applied. It is never skipped because a status stayed the same.
+- The OpenAPI documents and the human summary depend only on what is documented: entries, schemas, served surfaces and
+  security. Their bytes therefore change exactly when that content changes; for example, a provider that stays
+  `active` but starts or stops serving a surface changes its document.
+- The report also carries each root's last observation time and every entry's reason and detail. It changes whenever
+  any of those change, including a move from one failure reason to another.
+
+### G.2 Projection output
+
 ```yaml
 capability_documentation:
   document_id: uri
-  target_environment:
+  target_environment:              # copied from the runtime bindings; one projection per environment
     environment: string
     tenant: string?
     namespace: string?
 
   source:
-    contracts: list<uri>
-    runtime_bindings: list<uri>
-    registered_capabilities: list<string>
+    root_contract: uri?            # the verified aggregate root; absent in a host view
+    contracts: list<uri>           # every child contract id in the closure
+    runtime_bindings: list<uri>    # every child binding id used
+    registered_capabilities: list<string>   # union of capabilities named by the registration reports
+
+  identity: enum[in_contract, absent]   # G.1 input 6
 
   surfaces:
-    - kind: enum[openapi, swagger_ui, asyncapi, mcp_tools, sdk_metadata]
+    - kind: enum[openapi, human_summary, swagger_ui, asyncapi, mcp_tools, sdk_metadata]
       visibility: enum[public, internal, private]
       base_url_ref: config_ref?
-      includes: list<string>
+      includes: list<string>       # capability names and api_ids this surface includes
 
-  schemas:
-    - capability: string
-      request_schema_ref: uri
-      response_schema_ref: uri
-      faults: list<string>
+  components:                      # one per host (service root) with at least one documented capability, listing its
+                                   # own and its hosted capabilities; anything else appears only in the report
+    - component_uri: uri
+      component_version: semver
+      name: string                 # the host's claim identity name
+      claim_hash: string
+      service_root: uri
+      protected: bool              # the identity contract names this component as an audience
+      capabilities:
+        - capability: string
+          capability_version: semver
+          description: string      # the offer's description from the provider claim
+          contract_id: uri
+          binding_id: uri?         # absent in a host view
+          surface: enum[http, hosted_in_process, external]
+          visibility: enum[public, internal, private]
+          path: string?            # "/dcp/<capability>" for http
+          hosted_by: uri?          # host component_uri for hosted_in_process
+          provider_component_uri: uri      # the providing component; differs from the enclosing component when hosted
+          provider_component_version: semver
+          operations:              # required non-empty when documented
+            - operation: string
+              summary: string?
+              request_schema: artifact_ref
+              response_schema: artifact_ref
+          faults: list<string>     # fault codes whose affects.offers names this capability (A.10)
+      api_documents:
+        - api_id: string
+          openapi: artifact_ref
+          visibility: enum[public, internal, private]
+          served_surfaces: list<string>
+
+  report: documentation_report     # G.4
 
   lifecycle:
     generated_by: string
     generated_at: timestamp
 ```
 
-Rules:
+Enumeration values are written exactly as listed, in lower case (`http`, `hosted_in_process`, `in_contract`, `active`).
+Reason codes (G.4) are the upper-case identifiers. The registration report (G.3) follows the same rule.
+
+The rendered outputs are views of this one model:
+
+- **OpenAPI**: one OpenAPI 3.1.0 document per component that has a `service_root`. It holds the component's
+  documented `http` capabilities, its projected product API operations, and its documented `hosted_in_process`
+  capabilities (below). The `servers` entry is the service root, and
+  the schemas are the referenced artifacts, embedded with their references rebased (below). Components are rendered as separate documents rather than
+  one merged document, because independent components may legitimately serve the same product path (for example a
+  health route).
+- **Human summary**: every entry, including `hosted_in_process` and `external` ones, with description, status,
+  visibility, operations and faults.
+
+**DCP invocation operations.** For each documented `http` capability the document has one operation, `POST
+/dcp/<capability>`.
+- **Several contracts, one operation.** A component may serve one capability under several contracts at once, for
+  example a host's own profile contract beside a composition's child contracts, or two consumers' contracts with the
+  same provider. They share the one path and the provider's one offer, so they render as one operation: the renderer
+  groups a component's documented entries by capability (by path for `http`, and by provider component and capability
+  for `hosted_in_process`). The operation's `x-dcp-contracts` lists every grouped contract id in sorted order, and the
+  request envelope's `invocation.contractId` is an `enum` of exactly those ids. Grouped entries must agree on the
+  provider component and version, description, operations and faults; when they do not, rendering fails with
+  `CAPABILITY_DOCUMENTATION_CONFLICT` rather than choosing one. The report and the human summary keep one entry per
+  contract.
+- **Request body.**
+  - With one operation, the body is that operation's envelope: `invocation.operation` is fixed with `const` and
+    `invocation.input` refers to the operation's request schema.
+  - With several operations, the body is a `oneOf` over the per-operation envelopes, each fixing
+    `invocation.operation` with `const`. The branches are mutually exclusive whatever `input` holds, so selection
+    happens at the envelope level and never inside a payload schema.
+- **`200` response.** Every result is either a success or a capability fault, and the two are separate branches:
+  - **Success** of operation `o` has `success: {const: true}`, with `output` referring to `o`'s response schema.
+  - **Failure** is one shared branch per document: `success: {const: false}`, `errorCode` required (a declared fault
+    code from A.10 or a host failure code), `errorMessage` optional, and `output` any object (normally `{}`). The
+    operation's response schema is never applied to a failure, so a fault whose `output` is `{}` always validates.
+  - Each operation's result is `oneOf: [success of o, failure]`. The two branches are mutually exclusive on the
+    `success` constant.
+  - With one operation, the response is that result. With several, it is an `anyOf` over the per-operation results,
+    each marked `x-dcp-operation`. `anyOf` is used because the result envelope carries no operation field, so two
+    success branches may both match.
+- **Operation map.** `x-dcp-operations` maps each operation name to its request envelope and result envelope, for
+  tools that need the exact correlation OpenAPI cannot state.
+
+**Registration report operation.** Every rendered document also has `GET /dcp/registrations`. A component has a
+document only as a DCP HTTP host, and every DCP HTTP host serves its report (G.3), so the route is documented wherever
+it is served.
+- It has `operationId: dcp.registrations` and tag `dcp`. Its `200` response is the G.3 `registration_report` as the
+  JSON Schema `dcp.registrations.report`, written once per document by the renderer (a component never ships it), with
+  a `Cache-Control: no-store` response header. The schema allows unknown fields, as readers do, so a newer host's
+  report stays valid.
+- It is secured like the component's invocation operations. For a protected component under an identity contract it
+  carries the bearer requirement, `x-dcp-permission: dcp.registrations.read`, and `401` and `403`. Otherwise it has
+  no security.
+
+**Hosted capabilities.** A component's documented `hosted_in_process` capabilities have no HTTP path of their own: they
+are invoked through the host, never by the reader. They appear in the host's document under the top-level extension
+`x-dcp-hosted-capabilities`. Each item gives:
+- `capability`, `provider_component_uri`, `provider_claim_version` and the provider's description;
+- `contracts`: every contract the capability is hosted under, sorted;
+- `faults`;
+- for each operation, `operation` with `$ref`s to its embedded request and response schemas.
+
+The schemas are embedded like any other offer schema, so readers and tools see the complete, verified contract surface
+of every hosted component.
+- **Report**: G.4.
+
+**Embedding and reference rebasing.** The renderer embeds every shipped schema so that every reference still resolves.
+- **Offer schemas.** Each one is placed at `#/components/schemas/<name>`, where `<name>` is
+  `<capability>.<operation>.request` or `<capability>.<operation>.response`. For a hosted capability the name is
+  prefixed `hosted.<provider slug>.`, so two hosted components can never collide with each other or with the host.
+  The generated envelopes are `<capability>.<operation>.envelope` and `<capability>.<operation>.result`. Characters
+  outside `[A-Za-z0-9._-]` map to `_`, and a collision fails with `SCHEMA_NAME_COLLISION`.
+  - The schema is copied whole, `$defs` included.
+  - Every `$ref: "#<pointer>"` inside it becomes `#/components/schemas/<name><pointer>`, with `<name>` JSON-Pointer
+    escaped. So a reference to `#/$defs/Input` becomes `#/components/schemas/<name>/$defs/Input` and resolves inside the
+    embedded copy.
+- **Product API documents.** Every entry of every `components` section (`schemas`, `responses`, `parameters`,
+  `requestBodies`, `headers`, `examples`, `links`, `callbacks`, `pathItems`) is copied as `<api_id>.<name>`. Every
+  `$ref: "#/components/<section>/<name><rest>"` anywhere in the document, in paths and components alike, becomes
+  `#/components/<section>/<api_id>.<name><rest>`.
+- **Guard.** After rebasing, the renderer resolves every `$ref` in the output. An unresolved one fails with
+  `RENDER_REFERENCE_UNRESOLVED`. The A.12 and A.13 validation makes that unreachable for valid inputs; the guard keeps it
+  from ever reaching a reader.
+
+**Merge and schema validation.** Product documents sharing a path retain every distinct HTTP method. Unequal shared
+path metadata is a projection error; inherited parameters stay scoped to their source operations with operation-level
+overrides preserved. Payload schemas must pass draft 2020-12 meta-schema validation offline before projection.
+
+**Host view.** A DCP HTTP host MAY render documentation of itself (for example its own `/openapi.json`) from the same
+model and renderers. Its inputs are:
+- its own packaged claim and artifacts;
+- its own current registrations, in place of an observed report;
+- for every component it hosts in process, that component's **verified claim and its shipped artifacts**. The hosted
+  component's descriptions, operation schemas and faults come from its own claim, never from the host's or from the
+  registration, which carries only identity and hashes.
+
+The host view renders only **currently registered** capabilities. Matching runs in one direction:
+- every current `hosted_in_process` registration must have the hosted claim the host admitted, and that claim's
+  identity and canonical hash must equal both the contract's pin and the registration's `provider_claim_*`. A
+  registration without admitted evidence, or with mismatched evidence, fails the host view
+  (`HOST_VIEW_INPUT_MISMATCH`);
+- admitted evidence *without* a current registration is normal: a revoked or invalidated contract leaves the report
+  while its admission evidence stays with the host. Such a component is retained and simply not rendered. It is never an
+  error, and it never blocks the rest of the view.
+
+Artifact verification (A.12) and the gap rule (G.1) apply to every hosted component that is rendered. A host registers only contracts its broker accepted against enabled bindings, so its registrations
+are the acceptance proof for this view. A host view documents only the host and the components it hosts in process. It
+never documents another service, and it applies the same identity rule and visibility policy as the full projection.
+
+AsyncAPI, MCP tool documentation and SDK metadata are output kinds the model reserves. A projector produces them only
+once the owning offer kinds are specified for documentation: `event_stream` offers for AsyncAPI, tool surfaces for MCP.
+Until then a projector MUST NOT emit them from other sources (I).
+
+Filtering (DCP Documentation §4): every output can be narrowed by tenant, environment, contract id, binding id and
+capability surface. Filtering only removes entries from a view. It never changes an entry's status.
+
+### G.3 DCP HTTP binding
+
+`transport.kind: http_json` (B, HLD-C §6) maps a contract invocation to HTTP as follows. A component that serves any
+capability over HTTP is a **DCP HTTP host**, and its **service root** is derived from its runtime bindings (C).
+
+**Invoke.** `POST <service_root>/dcp/<capability>` with `Content-Type: application/json`.
+
+```yaml
+dcp_http_request:
+  invocation:            # required; field names are the deployed wire names
+    contractId: string
+    operation: string
+    consumerComponent: string?
+    providerComponent: string?
+    input: map<string, any>          # described by documentation.operations[operation == invocation.operation].request_schema
+    correlationId: string?
+    traceContext: map<string, string>?
+    integrityHash: string?
+    metadata: map<string, any>?
+  context:               # optional; allowed only when the composition has no identity contract
+    tenantId: string?
+    userId: string?
+    roles: list<string>?
+    permissions: list<string>?
+    correlationId: string?
+    requestId: string?
+    traceContext: map<string, string>?
+    metadata: map<string, any>?
+
+dcp_http_response:       # HTTP 200 for every invocation that reached the capability
+  success: bool
+  output: map<string, any>           # success: described by that operation's response_schema
+                                     # failure: any object, normally {}; never checked against the response_schema
+  errorCode: string?                 # a declared fault code (A.10) or a host failure code
+  errorMessage: string?
+  metadata: map<string, any>?
+```
+
+- The envelope keeps its deployed wire names, which are an explicit exception to the snake_case convention. Renaming
+  them would be a breaking wire change; see I.
+- With an identity contract: the request MUST carry `Authorization: Bearer <token>`, and a body `context` is rejected
+  with `400`. The host derives the caller's context from the verified token. Missing or invalid tokens get `401`, and an
+  insufficient permission gets `403`. Without an identity contract: there is no bearer requirement, and `context` is
+  accepted.
+- `400` is a malformed envelope. `404` means the capability is not registered on this host. `503` means the host is not
+  ready. These statuses are transport failures. Capability faults are returned in a `200` body with `success: false`.
+- `X-Correlation-Id` and W3C `traceparent` headers, when present, are propagated.
+
+**Registration report.** `GET <service_root>/dcp/registrations` returns what the host has registered right now. Every
+DCP HTTP host MUST serve it.
+
+```yaml
+registration_report:
+  component_uri: uri             # the host's claim identity uri
+  component_version: semver
+  claim_hash: string             # canonical hash of the host's own packaged claim
+  observed_at: timestamp         # when the host produced the report
+  registrations:                 # capabilities currently registered through the host's registrar
+    - contract_id: uri
+      contract_version: semver
+      capability: string
+      provider_claim_uri: uri    # the host itself, or a component it hosts in process
+      provider_claim_version: semver
+      provider_claim_hash: string    # canonical claim hash of that provider (see below)
+      surface: enum[http, hosted_in_process]
+      path: string?              # "/dcp/<capability>" when surface == http
+  served_surfaces: list<string>  # api_documents surfaces (A.13) this instance serves
+```
+
+- `provider_claim_*` are per-registration evidence:
+  - for `surface: http` they equal the report's own `component_uri`, `component_version` and `claim_hash`;
+  - for `hosted_in_process` they are the hosted component's identity and the claim hash the host verified against the
+    contract's pin when it admitted the component.
+
+  A host never reports a hosted component under its own identity.
+- A registration appears only while the capability is registered: a revoked or invalidated contract is absent. The
+  report lists contracts only. It never includes inputs, outputs, credentials, secret references or caller data.
+- With an identity contract, the report requires a bearer token with permission `dcp.registrations.read`. Projectors
+  obtain one with the OAuth 2.0 client-credentials grant for their own service identity. Without an identity contract
+  it is served unauthenticated, under the same trusted-network rule as invocation.
+- The response carries `Cache-Control: no-store`.
+- `registrations` is a reserved capability name. The report and the invoke paths share the `/dcp/` namespace, so a
+  claim that offers a capability named `registrations` is invalid (`CLAIM_CAPABILITY_RESERVED`).
+- The host's own OpenAPI document describes this route (G.2, registration report operation).
+
+**Observation rules for projectors.**
+- A projector probes only the service roots derived from the verified set's runtime bindings. It never scans networks
+  or ports, never queries DNS for other names, and never reads orchestrator APIs (container engines, cluster endpoint
+  objects). The deployment's bindings are the whole topology.
+- It probes each service root once per interval, with a timeout no larger than that root's binding
+  `runtime_policy.timeout_ms`. Failures back off up to a bounded maximum. Both values come from the projector's own
+  runtime binding.
+- An observation replaces the previous one for that root. A projector never carries forward a stale `active` status
+  past one failed observation.
+
+### G.4 Documentation report and reason codes
+
+```yaml
+documentation_report:
+  entries:
+    - contract_id: uri
+      binding_id: uri?
+      capability: string
+      provider_component_uri: uri
+      surface: enum[http, hosted_in_process, external]
+      status: enum[active, inactive, not_probed]
+      reason: string              # one code from the table below
+      detail: string?             # human-readable cause; no secrets
+      endpoint: uri?              # the endpoint exactly as the binding declares it
+      observed_at: timestamp?     # last observation of the entry's service root
+  api_operations:                 # product API operations not projected
+    - component_uri: uri
+      api_id: string
+      operation: string           # "<METHOD> <path>"
+      reason: SURFACE_NOT_SERVED | POLICY_PRIVATE
+```
+
+| Reason | Status | Meaning |
+|---|---|---|
+| `ACTIVE` | `active` | Documented. |
+| `POLICY_PRIVATE` | `inactive` | Visibility policy marks it `private`. |
+| `BINDING_MISSING` | `inactive` | No runtime binding names the contract. |
+| `BINDING_DISABLED` | `inactive` | The binding has `runtime_policy.enabled: false`. |
+| `BINDING_ENDPOINT_MISSING` | `inactive` | An `http` entry with no `base_url`, or a `base_url_ref` that does not resolve. |
+| `ENDPOINT_PATH_MISMATCH` | `inactive` | The endpoint is not `<service_root>/dcp/<capability>`. |
+| `HOST_UNKNOWN` | `inactive` | A `hosted_in_process` entry whose consumer has no service root in the set. |
+| `PROVIDER_UNREACHABLE` | `inactive` | The registration report could not be obtained: a connection failure, timeout, `5xx`, or a malformed body. |
+| `REGISTRATION_UNAUTHORIZED` | `inactive` | The host answered `401` or `403` to the projector. |
+| `HOST_CLAIM_MISMATCH` | `inactive` | The report's `component_uri`, `component_version` or `claim_hash` differs from the host pinned for that service root. Every entry on the root gets this reason. |
+| `CLAIM_MISMATCH` | `inactive` | The host check passed, but the registration's provider claim URI, version or hash differs from the entry's pin. |
+| `NOT_REGISTERED` | `inactive` | The report was obtained but does not list the contract id and version. |
+| `EXTERNAL_SURFACE` | `not_probed` | An `external` entry. It is listed, never probed. |
+
+A documentation gap (G.1) is not a report reason, because no report is produced when one exists. The projector fails
+with `DOCUMENTATION_GAP`, naming every gap.
+
+### G.5 Rules
+
 - Documentation generators MUST include only capabilities that are accepted by frozen composition contracts, active in
-  runtime bindings, and registered in the host runtime.
-- Every public or internal capability documentation entry MUST have explicit request and response schema references.
+  runtime bindings, and registered in the host runtime, as decided in G.1.
+- Every public or internal capability documentation entry MUST have explicit request and response schema references
+  (A.6), pinned by hash (A.12).
 - Declared DCP faults that can cross the documented boundary SHOULD be included in the generated documentation.
 - Plugin jars, classpath discovery, tool registries, provider registries, model catalogs, RAG/vector stores, prompts,
-  logs, model outputs, and implementation DTOs are not sufficient proof that a capability is callable or safe to expose.
+  logs, model outputs, implementation DTOs, `interface.details` hints, `metadata.references`, environment variables and
+  network or orchestrator discovery are not sufficient proof that a capability is callable or safe to expose.
 - If a capability is accepted and intended to be documented but lacks an explicit schema, generation MUST fail with a
   documentation gap rather than infer a public contract.
 - Documentation visibility is policy-controlled. DCP records the projection inputs; product policy decides which
   accepted capabilities are public, internal, or private.
+- Every entry the projection does not document appears in the report with its reason. Nothing is pruned silently.
+- Generated documentation MUST NOT include raw credentials, secret references, private prompts, retrieved chunks or
+  model outputs. Endpoints appear only as the binding declares them.
+- Child and referenced DCPs: the projection walks the verified containment closure. Each child is documented under its
+  own provider component, and an aggregate parent adds no surfaces of its own.
 
 ---
 
@@ -765,6 +1279,18 @@ Cross-schema:
 - An offer referenced by a contract `binding.provider_capability` MUST exist in the provider's claim at a version satisfying the constraint.
 - A documentation projection may expose only capabilities backed by accepted contracts, active runtime bindings, and
   host-registered capabilities, and every exposed capability must have explicit request/response schema refs.
+- Every `artifact_ref` (A.12) resolves inside its claim's artifact, and its `sha256` matches the bytes. `offers[].
+  documentation` refs are JSON Schemas, and `api_documents[].openapi` refs are OpenAPI documents.
+- `api_documents` operations each carry `x-dcp-surface` from the document's `surfaces` and an `x-dcp-access` of
+  `public` or `protected`. They use no `/dcp/` path, declare no `servers` or security, and repeat no method and path of
+  another document of the same component.
+- JSON Schema files use only JSON-Pointer `$ref`s and no `$id`, anchor or dynamic-reference keywords. OpenAPI files
+  reference only their own `#/components/...`.
+- `offers[].documentation.operations` is non-empty. Operation names are non-blank and unique within the offer, and
+  every request and response schema has a root `type: object`.
+- `http` entries that share a service root pin one provider component (G.1).
+- An HTTP-served binding's endpoint has the shape `<service_root>/dcp/<provider_capability>` (C, G.3).
+- A visibility policy that makes a documented entry's offer lack `documentation` is a documentation gap (G.1).
 - `action_context`, when present, must stay on the design-time path and must not be serialized into runtime invocation
   payloads or used as a substitute for contract/runtime-binding fields.
 
@@ -777,6 +1303,11 @@ Cross-schema:
 - **Wire-level encoding details** beyond "YAML/JSON equivalent" — the `unfurl-dcp` repo build spec covers serialization specifics.
 - **The exact `details` maps** for each transport kind and interface kind — enumerated in the repo build spec against real offers.
 - **Provider-specific runtime adapters** — runtime binding defines the portable shape; concrete adapters for Kubernetes, Docker Compose, Azure Container Apps, Helm, or external SaaS are specified separately.
+- **AsyncAPI, MCP tool and SDK documentation outputs** (G.2) — reserved output kinds. They are specified once
+  `event_stream` offers and tool surfaces have documentation fields of their own; until then no projector emits them.
+- **Invocation envelope naming** (G.3) — the HTTP envelope keeps its deployed camelCase wire names. Moving it to
+  snake_case is a breaking wire change for every DCP HTTP host and needs a versioned transition, so it is not part of
+  this draft.
 
 ---
 

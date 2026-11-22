@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 9,
+  "revision": 10,
   "adapters": [
     {
       "id": "unfurl://component/kotak-neo-adapter",
@@ -15,43 +15,43 @@
       },
       "claim": {
         "path": "kotak-neo-core/src/main/resources/dcp/claim.json",
-        "sha256": "efdc2934b4099de95a492238ff7bcfeadf0bbc00de32455f6b46c5b48bd8765f",
+        "sha256": "b1fae64458f636bab2d7c6ff70f3d96eabd4627a7f49c6fd529e1bcf22a866a2",
         "kind": "claim"
       },
       "catalog": {
         "path": "kotak-neo-core/src/main/resources/META-INF/unfurl-catalog.yaml",
-        "sha256": "550ad493b80570f9d9fa63150b222ad80f9626d2483081d4d79a9edbcd5fab56",
+        "sha256": "670342d4d746bd590f5aa8d218672d899dada63ee251441da00630d90a3537c1",
         "kind": "catalog"
       },
       "artifacts": [
         {
           "path": "kotak-neo-core/src/main/resources/dcp/schemas/gtt.instructions.list.input.json",
-          "sha256": "a3c1e26ffb09941f3f1ffbc9cbda3add4d4c7a2ebc9f4496b4da9d81314d6b8b",
+          "sha256": "1147984c437531c59cb866704e973c6ff5e87e8840d3aa7cfb9687ce642633eb",
           "kind": "operation-schema"
         },
         {
           "path": "kotak-neo-core/src/main/resources/dcp/schemas/gtt.instructions.list.output.json",
-          "sha256": "ad14ac72d9e05a577583d0eefcb4621e2c283b1bf37476d1b20816a9e3fbad43",
+          "sha256": "fabaa7c915c5c453c942493a3599643ba3fc485a780728c0e251a0ba74a2f382",
           "kind": "operation-schema"
         },
         {
           "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.holdings.list.input.json",
-          "sha256": "a3c1e26ffb09941f3f1ffbc9cbda3add4d4c7a2ebc9f4496b4da9d81314d6b8b",
+          "sha256": "1147984c437531c59cb866704e973c6ff5e87e8840d3aa7cfb9687ce642633eb",
           "kind": "operation-schema"
         },
         {
           "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.holdings.list.output.json",
-          "sha256": "f6b1e470a3738c2b6d26ccf5b35d17256ac1c74e6eb4e605d4078e4d32ae20a8",
+          "sha256": "e9360d02ead26f1a371fadb21a88d3bc37e3ae8af78ea61a867cd845ab4edcef",
           "kind": "operation-schema"
         },
         {
           "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.mtf-holdings.list.input.json",
-          "sha256": "a3c1e26ffb09941f3f1ffbc9cbda3add4d4c7a2ebc9f4496b4da9d81314d6b8b",
+          "sha256": "1147984c437531c59cb866704e973c6ff5e87e8840d3aa7cfb9687ce642633eb",
           "kind": "operation-schema"
         },
         {
           "path": "kotak-neo-core/src/main/resources/dcp/schemas/portfolio.mtf-holdings.list.output.json",
-          "sha256": "f6b1e470a3738c2b6d26ccf5b35d17256ac1c74e6eb4e605d4078e4d32ae20a8",
+          "sha256": "e9360d02ead26f1a371fadb21a88d3bc37e3ae8af78ea61a867cd845ab4edcef",
           "kind": "operation-schema"
         }
       ],
@@ -104,12 +104,12 @@
       },
       "claim": {
         "path": "codex-core/src/main/resources/dcp/claim.json",
-        "sha256": "28568d43a94a06d0394146f4a3dfe5e26c9004a55165158970ac1f19a0ca381f",
+        "sha256": "8bab8eea8b255eae1c2a521f9e28ada68060171ed7889ed064d3770064ac3920",
         "kind": "claim"
       },
       "catalog": {
         "path": "codex-core/src/main/resources/META-INF/unfurl-catalog.yaml",
-        "sha256": "d5ceb0f3f1ff3bed073683f1e098bd256cfddeb461a54615c8a0a97de07fc30d",
+        "sha256": "d44c6acd49d0f62938ede34d4c8aba75b9f24abde36f38f1c7ce145831f4b0ed",
         "kind": "catalog"
       },
       "artifacts": [
@@ -268,12 +268,12 @@
       },
       "claim": {
         "path": "src/main/resources/dcp/software-package/claim.json",
-        "sha256": "d5d6349def4a453149ec7e31cd2ee6ef4a985cec1ef667c843614eadfad41c79",
+        "sha256": "6157ef16165a0bfe2faa4338a9acc0cf7f75504fd83a66ee00e779090c6ca136",
         "kind": "claim"
       },
       "catalog": {
         "path": "src/main/resources/META-INF/unfurl-package-catalog.yaml",
-        "sha256": "e38b133b9e7593b32c138a998a6d8044dfe2bd346cace8f869f36c6be17dcb63",
+        "sha256": "6b034ad76ec876b948e3ec9800dd97f13b413f574f7cd10627de6b7010955f5f",
         "kind": "catalog"
       },
       "artifacts": [

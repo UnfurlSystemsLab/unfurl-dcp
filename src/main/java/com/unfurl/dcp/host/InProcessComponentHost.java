@@ -266,6 +266,7 @@ public final class InProcessComponentHost implements AutoCloseable {
         Map<ProviderArtifactPin, ComponentScope> scopes = new HashMap<>();
         Map<String, R> registrars = new LinkedHashMap<>();
         Map<String, ComponentScope> componentScopes = new LinkedHashMap<>();
+        Map<String, HostReport.AdmittedComponent> admitted = new LinkedHashMap<>();
         List<AdmittedOperation> operations = new ArrayList<>();
         for (Checked item : checked) {
             CompositionContract contract = item.verified().contract();
@@ -291,6 +292,11 @@ public final class InProcessComponentHost implements AutoCloseable {
                     scopes.put(item.pin(), scope);
                     registrars.put(describe(provider), registrar);
                     componentScopes.put(describe(provider), scope);
+                    // Admission evidence: the claim checked against the pin, and the snapshot it came from.
+                    PackagedResources resources = artifacts.packagedResources(item.pin()).orElseThrow(() ->
+                            new ComponentHostException(HostFailureCode.COMPONENT_ARTIFACT_MISSING, subject,
+                                    "no verified artifact carries the claim of " + item.pin().claimArtifact().coordinates()));
+                    admitted.put(describe(provider), new HostReport.AdmittedComponent(item.claim(), item.pin(), resources));
                 }
                 ComponentScope scope = scopes.get(item.pin());
                 ComponentActivation activation = activations.get(item.pin());
@@ -312,7 +318,7 @@ public final class InProcessComponentHost implements AutoCloseable {
                     contract.binding().providerCapability(), contract.contractId(), contract.contractVersion(),
                     item.configuration().redacted(), item.configuration().origins()));
         }
-        return new HostReport<>(registrars, componentScopes, operations, artifacts.ignoredArtifacts(), notHosted);
+        return new HostReport<>(registrars, componentScopes, admitted, operations, artifacts.ignoredArtifacts(), notHosted);
     }
 
     /** Step 6: the activation must speak for the same claim the artifact packages. */

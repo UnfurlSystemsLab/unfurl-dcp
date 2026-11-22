@@ -138,6 +138,11 @@ are recorded alongside the graph, never registered as fake accepted executors.
    validate and smoke test locally within authorization. Neither runtime is a supported choice.
 
 The adapter emits claim JSON, catalog and operation schemas used to construct an assembly.
+The registry validator finds each indexed offer's operation schemas through the claim's typed
+`documentation` (HLD-C2 A.6, A.12), never through `interface.details` hints: every documented
+operation's request and response schema resolves inside the component's artifact root (the directory
+holding the catalog's `META-INF/`), matches the SHA-256 the claim pins, is pinned in the registry
+entry too, and is a valid Draft 2020-12 schema. An indexed offer without documentation is refused.
 The assembly owner chooses consumers, freezes/signs contracts and supplies runtime bindings.
 Claims, an index entry or successful tests do not grant invocation authority.
 
