@@ -184,6 +184,62 @@ class DocumentationProjectorTest {
         assertThat(plan.serviceRoots()).containsExactly(FLOW_ROOT, HOST_ROOT);
     }
 
+    /**
+     * An external_protocol offer (HLD-C2 A.6, G.1) is external whatever its deployment: an identity provider deployed
+     * with the composition as a container and one the customer runs (external SaaS) are both listed with
+     * EXTERNAL_SURFACE, never probed, and never a gap, although the offer has no documentation. The same container
+     * binding with an ordinary interface kind is HTTP, so it would be a gap: the surface comes from the offer.
+     */
+    @Test
+    void externalProtocolOffersAreExternalInEveryDeployment() {
+        for (DeploymentKind kind : List.of(DeploymentKind.CONTAINER, DeploymentKind.EXTERNAL_SAAS)) {
+            DocumentationWorld world = DocumentationWorld.standard().withIdentity();
+            world.put(identityOffer(world, new com.unfurl.dcp.claim.OfferInterface(
+                    com.unfurl.dcp.claim.InterfaceKind.EXTERNAL_PROTOCOL, Map.of("protocol", "oauth2"))));
+            world.replaceBinding("urn:c:identity", b -> withDeploymentKind(b, kind));
+
+            assertThat(new CapabilityDocumentationValidator().gaps(world.composition(), world.claims, world.bindings, world.policy))
+                    .as(kind.name()).isEmpty();
+            DocumentationPlan plan = projector.plan(world.inputs());
+            ReportEntry identity = entry(plan.project(world.healthy(), T0), "urn:c:identity");
+            assertThat(identity.surface()).as(kind.name()).isEqualTo(EntrySurface.EXTERNAL);
+            assertThat(identity.reason()).as(kind.name()).isEqualTo(ReasonCode.EXTERNAL_SURFACE);
+            assertThat(identity.status()).as(kind.name()).isEqualTo(EntryStatus.NOT_PROBED);
+            assertThat(plan.serviceRoots()).as(kind.name()).containsExactly(FLOW_ROOT, HOST_ROOT);
+        }
+
+        DocumentationWorld unloaded = DocumentationWorld.standard().withIdentity();
+        unloaded.put(identityOffer(unloaded, new com.unfurl.dcp.claim.OfferInterface(
+                com.unfurl.dcp.claim.InterfaceKind.EXTERNAL_PROTOCOL, Map.of("protocol", "oauth2"))));
+        assertThat(new CapabilityDocumentationValidator().gaps(unloaded.children, unloaded.claims, unloaded.bindings,
+                unloaded.policy)).as("the child-contract overload applies the same rule").isEmpty();
+
+        DocumentationWorld ordinary = DocumentationWorld.standard().withIdentity();
+        ordinary.put(identityOffer(ordinary, ordinary.claims.get(new ClaimKey(FLOW, "1.0.0")).offers().get(0).offerInterface()));
+        ordinary.replaceBinding("urn:c:identity", b -> withDeploymentKind(b, DeploymentKind.CONTAINER));
+        assertThat(new CapabilityDocumentationValidator().gaps(ordinary.composition(), ordinary.claims, ordinary.bindings,
+                ordinary.policy)).extracting(DocumentationGap::capability).containsExactly("identity-context");
+        assertThat(new CapabilityDocumentationValidator().gaps(ordinary.children, ordinary.claims, ordinary.bindings,
+                ordinary.policy)).extracting(DocumentationGap::capability).containsExactly("identity-context");
+    }
+
+    /** The world's identity claim with its one offer replaced by an undocumented one of the given interface. */
+    private static Claim identityOffer(DocumentationWorld world, com.unfurl.dcp.claim.OfferInterface offerInterface) {
+        Claim idp = world.claims.get(new ClaimKey(DocumentationWorld.IDP, "1.0.0"));
+        Offer offer = idp.offers().get(0);
+        return DocumentationFixtures.withOffers(idp, List.of(new Offer(offer.capability(), offer.description(),
+                offer.consumerAccess(), offerInterface, offer.stability(), offer.version(), false, null)));
+    }
+
+    /** A binding with its provider's deployment kind replaced; it keeps no base URL, as an identity binding has none. */
+    private static RuntimeBinding withDeploymentKind(RuntimeBinding b, DeploymentKind kind) {
+        ProviderInstance p = b.providerInstance();
+        return new RuntimeBinding(b.bindingId(), b.contractId(), b.contractVersion(), b.targetEnvironment(),
+                new ProviderInstance(p.componentUri(), p.componentVersion(), p.instanceName(), kind, null, p.baseUrlRef(),
+                        p.credentialsRef()),
+                b.consumerInstance(), b.runtimePolicy(), b.configuration(), b.deploymentControls(), b.lifecycle(), b.metadata());
+    }
+
     /** Identity comes from the verified set: protected components are marked; without identity nothing is. */
     @Test
     void identityComesFromTheVerifiedSet() {

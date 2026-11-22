@@ -1,6 +1,7 @@
 package com.unfurl.dcp.documentation;
 
 import com.unfurl.dcp.claim.Claim;
+import com.unfurl.dcp.claim.InterfaceKind;
 import com.unfurl.dcp.claim.Offer;
 import com.unfurl.dcp.contract.CompositionContract;
 import com.unfurl.dcp.contract.TransportKind;
@@ -18,10 +19,19 @@ final class Entries {
     private Entries() { }
 
     /**
-     * The surface of an entry (DCP HLD-C2 G.1 table): from its binding's deployment kind; without a binding, from the
-     * contract's transport, used only to label a {@code BINDING_MISSING} entry.
+     * The surface of an entry (DCP HLD-C2 G.1): {@code EXTERNAL} when its provider offer is {@code external_protocol},
+     * whatever the deployment kind, because the provider is then reached over its own protocol whether it is deployed
+     * with the composition or run by the customer; otherwise from its binding's deployment kind; without a binding, from
+     * the contract's transport, used only to label a {@code BINDING_MISSING} entry.
+     *
+     * @param offer the provider offer the contract binds, or null when the provider claim is not available (the gap gate
+     *              then reports the entry as a gap if it must be documented)
      */
-    static EntrySurface surfaceOf(CompositionContract contract, RuntimeBinding binding) {
+    static EntrySurface surfaceOf(CompositionContract contract, RuntimeBinding binding, Offer offer) {
+        if (offer != null && offer.offerInterface() != null
+                && offer.offerInterface().interfaceKind() == InterfaceKind.EXTERNAL_PROTOCOL) {
+            return EntrySurface.EXTERNAL;
+        }
         if (binding != null && binding.providerInstance() != null && binding.providerInstance().deploymentKind() != null) {
             return EntrySurface.of(binding.providerInstance().deploymentKind());
         }

@@ -110,6 +110,30 @@ class ClaimDocumentationTest {
         assertThat(codes(validator.validate(Fixtures.validProviderClaim()))).doesNotContain(ErrorCode.CLAIM_CAPABILITY_RESERVED);
     }
 
+    /**
+     * An external_protocol offer (HLD-C2 A.6) names its protocol and carries no documentation: a missing or blank
+     * protocol and any documentation are each {@code CLAIM_EXTERNAL_PROTOCOL_INVALID}; a protocol without documentation is
+     * valid; other kinds are not affected by the rule.
+     */
+    @Test
+    void externalProtocolOffersNameTheirProtocolAndCarryNoDocumentation() {
+        Offer base = Fixtures.validProviderClaim().offers().get(0);
+        java.util.function.BiFunction<Map<String, Object>, OfferDocumentation, Claim> claimWith = (details, documentation) ->
+                withOffers(Fixtures.validProviderClaim(), List.of(new Offer(base.capability(), base.description(),
+                        base.consumerAccess(), new OfferInterface(InterfaceKind.EXTERNAL_PROTOCOL, details), base.stability(),
+                        base.version(), false, null, documentation)));
+
+        assertThat(validator.validate(claimWith.apply(Map.of("protocol", "oauth2"), null)).valid()).isTrue();
+        assertThat(codes(validator.validate(claimWith.apply(Map.of(), null))))
+                .containsExactly(ErrorCode.CLAIM_EXTERNAL_PROTOCOL_INVALID);
+        assertThat(codes(validator.validate(claimWith.apply(Map.of("protocol", " "), null))))
+                .containsExactly(ErrorCode.CLAIM_EXTERNAL_PROTOCOL_INVALID);
+        assertThat(codes(validator.validate(claimWith.apply(Map.of("protocol", "oauth2"),
+                DocumentationFixtures.documentedClaim(Fixtures.validProviderClaim()).offers().get(0).documentation()))))
+                .containsExactly(ErrorCode.CLAIM_EXTERNAL_PROTOCOL_INVALID);
+        assertThat(codes(validator.validate(Fixtures.validProviderClaim()))).doesNotContain(ErrorCode.CLAIM_EXTERNAL_PROTOCOL_INVALID);
+    }
+
     /** Documentation with no operations is incomplete. */
     @Test
     void emptyOperationsAreIncomplete() {

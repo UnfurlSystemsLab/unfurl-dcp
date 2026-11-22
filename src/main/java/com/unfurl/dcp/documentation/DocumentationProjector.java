@@ -108,10 +108,10 @@ public final class DocumentationProjector {
         for (VerifiedContract child : children) {
             CompositionContract contract = child.contract();
             RuntimeBinding binding = bindings.get(contract.contractId());
-            EntrySurface surface = Entries.surfaceOf(contract, binding);
             String capability = contract.binding().providerCapability();
             Claim claim = claimByContract.get(contract.contractId());
             Offer offer = CapabilityDocumentationValidator.requireOffer(claim, contract);
+            EntrySurface surface = Entries.surfaceOf(contract, binding, offer);
             Pin pin = pinByContract.get(contract.contractId());
             DocumentationPlan.Planned entry = new DocumentationPlan.Planned(contract, binding, surface,
                     inputs.visibility().ofCapability(capability), claim, offer, pin);
