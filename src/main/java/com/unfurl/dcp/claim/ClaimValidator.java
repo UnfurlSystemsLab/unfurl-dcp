@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * Validator: enforces DCP claim invariants across domain boundaries, offers,
@@ -68,6 +69,7 @@ public final class ClaimValidator {
         for (Offer offer : claim.offers()) {
             validateOffer(offer, diagnostics);
         }
+        validateApiDocuments(claim.apiDocuments(), diagnostics);
         validateDependencies(claim.dependencies(), diagnostics);
         validateFaults(claim, diagnostics);
         for (Refusal refusal : claim.refusals()) {
@@ -92,6 +94,111 @@ public final class ClaimValidator {
         boolean negotiation = offer.offerInterface() != null && offer.offerInterface().interfaceKind() == InterfaceKind.NEGOTIATION;
         if ((offer.metered() || negotiation) && (offer.costImplications() == null || offer.costImplications().isBlank())) {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "cost_implications are required for metered or negotiation offers", "offers.cost_implications"));
+        }
+        validateDocumentation(offer, diagnostics);
+    }
+
+    /** Detail keys that earlier claims used as unenforced payload-schema hints (DCP HLD-C2 A.6). */
+    private static final List<String> SCHEMA_HINT_KEYS = List.of("input_schema", "output_schema");
+    /** Kebab-case identifiers, as A.13 requires for api ids and surfaces. */
+    private static final Pattern KEBAB = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
+
+    /**
+     * Helper: validates an offer's documentation shape (DCP HLD-C2 A.6, A.12). Operations are non-empty with non-blank,
+     * unique names, and every operation has two well-formed JSON Schema references. The schemas' contents (root object,
+     * local references) are checked by ClaimArtifactValidator, which holds the bytes. Schema hints left in
+     * {@code interface.details} without documentation produce a warning: they keep loading, but they never count as
+     * documentation.
+     */
+    private void validateDocumentation(Offer offer, List<Diagnostic> diagnostics) {
+        String at = "offers[" + offer.capability() + "].documentation";
+        OfferDocumentation documentation = offer.documentation();
+        if (documentation == null) {
+            if (offer.offerInterface() != null
+                    && offer.offerInterface().details().keySet().stream().anyMatch(SCHEMA_HINT_KEYS::contains)) {
+                diagnostics.add(Diagnostic.warning(ErrorCode.CLAIM_DOCUMENTATION_HINT_ONLY,
+                        "interface.details carries input_schema/output_schema hints but the offer has no documentation;"
+                                + " state payload schemas through documentation.operations (DCP HLD-C2 A.6)",
+                        "offers[" + offer.capability() + "].interface.details"));
+            }
+            return;
+        }
+        if (documentation.operations().isEmpty()) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_DOCUMENTATION_INCOMPLETE,
+                    "documentation.operations must not be empty", at + ".operations"));
+            return;
+        }
+        HashSet<String> names = new HashSet<>();
+        for (OperationDocumentation operation : documentation.operations()) {
+            if (operation == null || operation.operation() == null || operation.operation().isBlank()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_DOCUMENTATION_INCOMPLETE,
+                        "every documented operation needs a non-blank operation name", at + ".operations"));
+                continue;
+            }
+            String opAt = at + ".operations[" + operation.operation() + "]";
+            if (!names.add(operation.operation())) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_DOCUMENTATION_OPERATION_DUPLICATE,
+                        "operation " + operation.operation() + " is documented twice", opAt));
+            }
+            validateSchemaRef(operation.requestSchema(), opAt + ".request_schema", diagnostics);
+            validateSchemaRef(operation.responseSchema(), opAt + ".response_schema", diagnostics);
+        }
+    }
+
+    /** Helper: one payload schema reference must be present, well formed and a JSON Schema. */
+    private void validateSchemaRef(ArtifactRef ref, String at, List<Diagnostic> diagnostics) {
+        if (ref == null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_DOCUMENTATION_INCOMPLETE, "schema reference is required", at));
+            return;
+        }
+        ref.shapeViolation().ifPresent(problem -> diagnostics.add(Diagnostic.error(ErrorCode.ARTIFACT_REF_INVALID, problem, at)));
+        if (ref.mediaType() != null && ref.mediaType() != ArtifactMediaType.SCHEMA_JSON) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_DOCUMENTATION_MEDIA_TYPE, "payload schemas must be "
+                    + ArtifactMediaType.SCHEMA_JSON.wireValue() + ", not " + ref.mediaType().wireValue(), at));
+        }
+    }
+
+    /**
+     * Helper: validates the claim-level API documents (DCP HLD-C2 A.13): kebab-case, unique ids, a description, a
+     * non-empty list of kebab-case surfaces, and a well-formed OpenAPI reference. The documents' own rules are checked by
+     * ClaimArtifactValidator.
+     */
+    private void validateApiDocuments(List<ApiDocument> documents, List<Diagnostic> diagnostics) {
+        HashSet<String> ids = new HashSet<>();
+        for (ApiDocument document : documents) {
+            if (document == null) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID, "api document is required", "api_documents"));
+                continue;
+            }
+            String at = "api_documents[" + document.apiId() + "]";
+            if (document.apiId() == null || !KEBAB.matcher(document.apiId()).matches()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID, "api_id must be kebab-case", at + ".api_id"));
+            } else if (!ids.add(document.apiId())) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID,
+                        "api_id " + document.apiId() + " is declared twice", at + ".api_id"));
+            }
+            if (document.description() == null || document.description().isBlank()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID, "description is required", at + ".description"));
+            }
+            if (document.surfaces().isEmpty()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID, "surfaces must not be empty", at + ".surfaces"));
+            }
+            for (String surface : document.surfaces()) {
+                if (surface == null || !KEBAB.matcher(surface).matches()) {
+                    diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID,
+                            "surface must be kebab-case: " + surface, at + ".surfaces"));
+                }
+            }
+            if (document.openapi() == null) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID, "openapi reference is required", at + ".openapi"));
+                continue;
+            }
+            document.openapi().shapeViolation()
+                    .ifPresent(problem -> diagnostics.add(Diagnostic.error(ErrorCode.ARTIFACT_REF_INVALID, problem, at + ".openapi")));
+            if (document.openapi().mediaType() != null && !document.openapi().mediaType().isOpenApi()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_API_DOCUMENT_INVALID,
+                        "openapi must use an OpenAPI media type", at + ".openapi"));
+            }
         }
     }
 

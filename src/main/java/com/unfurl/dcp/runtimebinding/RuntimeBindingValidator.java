@@ -84,6 +84,7 @@ public final class RuntimeBindingValidator {
                     diagnostics.add(Diagnostic.error(ErrorCode.BINDING_OVERRIDES_OWNERSHIP, "runtime timeout_ms cannot exceed frozen contract expectations", "runtime_policy.timeout_ms"));
                 }
             }
+            endpointShape(binding, contract).ifPresent(diagnostics::add);
         }
         if (binding.providerInstance() != null && binding.providerInstance().baseUrl() != null && binding.providerInstance().baseUrlRef() != null) {
             diagnostics.add(Diagnostic.error(ErrorCode.VALIDATION_FAILED, "base_url and base_url_ref are mutually exclusive", "provider_instance"));
@@ -100,6 +101,36 @@ public final class RuntimeBindingValidator {
         }
         scanMap("deployment_controls.values", binding.deploymentControls() == null ? Map.of() : binding.deploymentControls().values(), diagnostics);
         return new SchemaValidationReport(diagnostics);
+    }
+
+    /**
+     * Rule (DCP HLD-C2 C, G.3): a provider reached over the DCP HTTP binding has an endpoint of exactly
+     * {@code <service_root>/dcp/<provider_capability>}, so the service root can be derived and is never configured
+     * separately. Only a literal {@code base_url} is checked here; a {@code base_url_ref} is checked where it is resolved,
+     * because this validator does no I/O.
+     */
+    private static java.util.Optional<Diagnostic> endpointShape(RuntimeBinding binding, CompositionContract contract) {
+        ProviderInstance provider = binding.providerInstance();
+        if (provider == null || provider.baseUrl() == null || !isHttpServed(provider.deploymentKind())
+                || contract.binding() == null || contract.binding().providerCapability() == null) {
+            return java.util.Optional.empty();
+        }
+        String capability = contract.binding().providerCapability();
+        String path = provider.baseUrl().getRawPath();
+        if (path == null || !path.endsWith(DCP_PATH_PREFIX + capability)) {
+            return java.util.Optional.of(Diagnostic.error(ErrorCode.RUNTIME_BINDING_ENDPOINT_SHAPE,
+                    "provider_instance.base_url must be <service_root>" + DCP_PATH_PREFIX + capability + " but is "
+                            + provider.baseUrl(), "provider_instance.base_url"));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /** The path segment that separates a service root from a capability name on the DCP HTTP binding. */
+    public static final String DCP_PATH_PREFIX = "/dcp/";
+
+    /** Whether a deployment kind is reached over the DCP HTTP binding (HLD-C2 C). */
+    public static boolean isHttpServed(DeploymentKind kind) {
+        return kind == DeploymentKind.CONTAINER || kind == DeploymentKind.REMOTE_SERVICE || kind == DeploymentKind.SIDECAR;
     }
 
     /**

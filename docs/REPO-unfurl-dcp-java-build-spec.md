@@ -37,7 +37,7 @@ src/main/java/com/unfurl/dcp/
   claim/            // claim schema models + validator
   fault/            // fault declarations, runtime fault signals, deterministic propagation gate
   manifest/         // webapp manifest models + validator
-  documentation/    // capability documentation projection models + validator
+  documentation/    // capability documentation projection: model, gap gate, projector, renderers, registration report codec
   contract/         // composition contract, freeze/load, provenance, trust, verification
   runtimebinding/   // runtime binding schema + validator
   questions/        // question schema + action context + renderers + captured-answer model
@@ -51,6 +51,9 @@ src/main/java/com/unfurl/dcp/
 ```
 
 Recommended layering:
+- Documentation schema syntax is validated offline against draft 2020-12 behind `SchemaSyntaxValidator`, with the
+  `dev.harrel:json-schema:1.9.1` adapter and existing Jackson provider. No external resolver or logging dependency is
+  allowed. Renderer regressions cover disjoint methods on a shared path and conflicting shared metadata.
 - `model` records/POJOs + Jackson annotations.
 - `validator` classes using Jakarta Bean Validation + custom constraint validators.
 - `service` classes for projection/freeze/resolve/render operations.
@@ -174,6 +177,12 @@ Required rule classes include:
 - Invalid claims (empty refusals, missing boundary principles, missing negotiation surface for intelligent component) fail validation with deterministic errors.
 - `faults` is always explicit in Java producers and claim YAML. Producers with no declared operational faults use `faults: { emitted: [] }`; constructors must not silently add it.
 - A component's claim is one fixed document packaged as the `claim` block of `META-INF/unfurl-catalog.yaml` (HLD-C §3.10). `PackagedClaim.load(loader, uri)` returns exactly the packaged claim with that identity, validated and unchanged, and fails when no manifest or more than one carries it; `PackagedClaim.parse(bytes)` does the same for manifest bytes read from an artifact. Runtimes report and check this claim and never build one from their profile or loaded definitions.
+- Offers may carry `documentation` (a non-empty `operations` list, each with a `request_schema` and a `response_schema`
+  whose roots are objects) and claims may carry `api_documents`, both as
+  hash-pinned `artifact_ref`s (HLD-C2 A.6, A.12, A.13). A claim without them keeps its canonical hash. Existing `Offer` and
+  `Claim` constructors keep compiling. Both `offer_interface` and the spec's `interface` spelling deserialize.
+  `input_schema` / `output_schema` detail hints without `documentation` produce the warning
+  `CLAIM_DOCUMENTATION_HINT_ONLY`.
 
 ### 2B) Fault Vocabulary And Propagation
 - Claims carry a first-class `faults` section declaring emitted fault codes, affected needs/offers/constraints, propagation policy, evidence, and allowed remediation actions.
@@ -197,6 +206,8 @@ Required rule classes include:
 - Binding links to real contract id/version and matching party versions.
 - Inline secrets are rejected; reference-only secret strategy enforced.
 - Runtime policy cannot alter ownership/dependency/conflict/trust/invalidation decisions.
+- An HTTP-kind provider (`CONTAINER`, `REMOTE_SERVICE`, `SIDECAR`) `baseUrl` ends with
+  `/dcp/<provider_capability>`; anything else fails with `RUNTIME_BINDING_ENDPOINT_SHAPE` (HLD-C2 C).
 - Aggregate runtime bindings reuse the recursive DCP containment bridge in metadata extensions (`contains`, `children`, `containsClaimUris`, `childClaimUris`) to reference child runtime binding ids. Tree validation fails on missing child refs, cycles, or inline secrets in any descendant. Product-specific runtime closure sidecars are not valid substitutes for child DCP runtime bindings.
 
 ### 5) Resolver + Versioning
@@ -216,13 +227,57 @@ Required rule classes include:
 - Action-scoped authoring context selects targeted add/remove/replace/connect/disconnect/runtime-configuration
   questions and is not serialized into Plane 3 runtime invocation or frozen contract semantics.
 
-### 7B) Capability Documentation Projection
+### 7B) Capability Documentation Projection   [implemented]
 - Generated OpenAPI, Swagger UI, AsyncAPI, MCP tool documentation, or equivalent runtime-facing docs are projected
   from accepted composition contracts, active runtime bindings, host-registered capabilities, explicit schemas, and
   declared faults.
 - Classpath scans, plugin jars, tool registries, provider registries, model catalogs, RAG/vector stores, prompts,
   logs, model outputs, and implementation DTOs are rejected as documentation proof.
 - Missing explicit request/response schemas fail with a documentation gap instead of inferred public schemas.
+- **Inputs** (HLD-C2 G.1): the verified composition (`VerifiedComposition`), provider claims checked against each child's
+  pinned claim hash, hash-verified artifacts, runtime bindings, one `RegistrationObservation` per service root, the
+  identity presence, and a `VisibilityPolicy`. Nothing else is read. Service roots come only from bindings (`baseUrl`, or
+  `baseUrlRef` through substrate's `ConfigResolver`).
+- **Plan, then project.** `DocumentationProjector.plan` is static and throws on a claim-pin mismatch, an
+  artifact failure or a `DOCUMENTATION_GAP` (naming every gap). `DocumentationPlan.serviceRoots()` is the complete set
+  of roots to observe. `DocumentationPlan.project(observations, at)` does no I/O, is byte-deterministic, and never
+  treats an unobserved root as active.
+- **Host and provider checks.** The host check compares each report's identity with the root's pinned host; the
+  provider check compares each registration's `provider_claim_*` with the entry's pin. A correctly admitted hosted
+  component is `ACTIVE`, a wrong host gives `HOST_CLAIM_MISMATCH`, and a wrong provider gives `CLAIM_MISMATCH`. Two
+  pinned providers on one root throw `SERVICE_ROOT_CONFLICT`.
+- **Freshness.** Every observation is applied. OpenAPI and summary bytes change exactly when documented content
+  (entries, schemas, served surfaces, security) changes; the report changes with reasons, details and times.
+- **Report.** Every child has exactly one report entry with a G.4 reason code. Nothing is pruned silently, and product
+  API operations that are not served are reported as `SURFACE_NOT_SERVED`.
+- **OpenAPI.** One OpenAPI 3.1.0 document per component with a service root. It contains `POST /dcp/<capability>` for
+  `ACTIVE` HTTP capabilities with the G.3 envelope, the offer schemas embedded with rebased references, `x-dcp-faults`, and the
+  projected product API operations.
+  - Schemas are embedded with rebased references (offer schemas under `<capability>.request|response`, product
+    components under `<api_id>.`). A final resolve pass fails with `RENDER_REFERENCE_UNRESOLVED`, and shipped schemas
+    may use JSON-Pointer refs only.
+  - Security is per operation. With an identity contract, a protected component's DCP operations and its
+    `x-dcp-access: protected` operations get `bearerAuth` and 401/403, its `public` operations get `security: []`,
+    and there is never top-level security. Without one: no scheme, plus the unauthenticated statement.
+  - Both paths are golden-tested.
+- **Registration report.** `RegistrationReportCodec` is the single wire codec for `GET /dcp/registrations`, used by hosts
+  and observers alike.
+- **Host view.** `HostDocumentationProjector` renders a host's own documentation from its packaged claim and artifacts,
+  its local registrations, and each hosted component's verified claim and artifacts, taken from
+  `HostReport.components()` (claim, pin, `PackagedResources` over the verified jar snapshot). A hosted item and a
+  registration that disagree is `HOST_VIEW_INPUT_MISMATCH`. No composition files are needed.
+- **Operations.** A capability with several operations renders a `oneOf` of `const`-operation envelopes, an `anyOf` of
+  results, and `x-dcp-operations`. Every result is `oneOf` a success branch (`success: true`, the operation's response
+  schema) and the shared `dcp.invocation.failure` branch (`success: false`, `errorCode` required, any `output`), so
+  faults validate.
+- **Revoked hosted contracts.** Admitted evidence without a current registration is retained and not rendered. It is
+  never `HOST_VIEW_INPUT_MISMATCH`. Hosted capabilities render under `x-dcp-hosted-capabilities`.
+- **Reserved output kinds.** AsyncAPI, MCP tools and SDK metadata are not rendered (`UNSUPPORTED_SURFACE`).
+- **Shared product paths.** Disjoint methods merge, path parameters stay with their own operations, and unequal shared
+  path metadata is refused at admission and again at render (`API_DOCUMENT_PATH_CONFLICT`).
+- **Layering.** `documentation/` has no HTTP code. Its only `host/` imports are `VerifiedComposition`,
+  `VerifiedContracts`, `VerifiedContract`, `ProviderArtifactPin`, `HostReport.AdmittedComponent` and
+  `PackagedResources`, and `host/` never imports `documentation/`.
 
 ### 8) Runtime Composition Broker
 - `present(claim, context)` validates the claim, performs frozen-contract lookup, verifies the offline signature, and returns `ACCEPT(MATCH_FOUND)` or structured refusal reasons without model calls or network access.
@@ -264,7 +319,8 @@ Design: HLD-C §6.1 and the LLD's *In-Process Component Host*.
   refused. Jackson's multi-release, modular jar loads cleanly as a pinned companion. **Implemented** (slice 3):
   `PinnedJarArtifacts` (stage 1 from zip data, stage 2 loading), `PinnedArtifactClassLoader` and `SharedApi`, tested
   with jars compiled at test time and the real Jackson jars; each delivered jar is read into memory once and
-  hashed, inspected and loaded from that one snapshot, so nothing on disk can change what loads; `SharedApiBoundaryTest` pins the one non-shared type the shared packages expose.
+  hashed, inspected and loaded from that one snapshot, so nothing on disk can change what loads; `SharedApiBoundaryTest`
+  pins the host-only Jackson mapper and tree types exposed by shared packages; components never exchange these objects.
 - Every admitted contract's consumer party and runtime binding consumer equal the host's packaged identity, or
   admission fails with `CONSUMER_MISMATCH` before any code runs.
 - Component configuration: `META-INF/unfurl-config.yaml` (schema and packaged defaults, base path only) merged with the

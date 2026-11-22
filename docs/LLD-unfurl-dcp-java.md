@@ -76,7 +76,7 @@ src/main/java/com/unfurl/dcp/
   claim/            // Claim schema records + ClaimValidator
   fault/            // fault declarations, runtime fault signals, deterministic propagation gate
   manifest/         // WebappManifest schema records + WebappManifestValidator
-  documentation/    // capability documentation projection records + validator
+  documentation/    // capability documentation projection: model, gap validator, projector, renderers, registration report codec
   contract/         // CompositionContract records, freezing, loading, provenance, trust, signature verification
   runtimebinding/   // RuntimeBinding records + RuntimeBindingValidator (no-inline-secrets, policy firewall)
   questions/        // NegotiationQuestion(Schema) + ActionContext + renderers + CapturedAnswer
@@ -133,10 +133,19 @@ manifest
 
 documentation
   contains:
-    CapabilityDocumentation, DocumentationSurface, DocumentationSource,
-    DocumentationSchemaRef, CapabilityDocumentationValidator
+    model: CapabilityDocumentation, DocumentationSource, DocumentationSurface, DocumentedComponent,
+           DocumentedCapability, DocumentedApi, DocumentationReport, ReportEntry, ApiOperationExclusion,
+           EntrySurface, EntryStatus, ReasonCode, IdentityMode, Visibility, VisibilityPolicy
+    runtime observation: RegistrationReport, Registration, RegistrationObservation, RegistrationReportCodec
+    services: CapabilityDocumentationValidator (gap gate), ClaimArtifactValidator, ServiceRootResolver,
+              DocumentationProjector, HostDocumentationProjector
+    ports + adapters: DocumentationArtifactStore, ContentAddressedArtifactStore, PackagedArtifactStore
+    renderers: DocumentationRenderer, OpenApiDocumentRenderer, HumanSummaryRenderer, DocumentationCodec
   may depend on:
-    contract, runtimebinding, claim, validation, Jakarta Validation API
+    contract, runtimebinding, claim, fault, validation, Jakarta Validation API, Jackson,
+    host (ONLY value types: VerifiedComposition, VerifiedContracts, VerifiedContract, ProviderArtifactPin,
+          HostReport.AdmittedComponent, PackagedResources),
+    unfurl-substrate substrate-ports (ConfigResolver, ExecutionContext)
 
 contract
   contains:
@@ -150,7 +159,8 @@ contract
 
 runtimebinding
   contains:
-    RuntimeBinding record + nested records mirroring HLD-C2 §C, RuntimeBindingValidator
+    RuntimeBinding record + nested records mirroring HLD-C2 §C, RuntimeBindingValidator,
+    IdentityBinding (reader of the identity-context binding)
   may depend on:
     contract, versioning, Jakarta Validation API
 
@@ -216,7 +226,17 @@ Dependency direction is acyclic. Critical rules:
 - `trust/` is a **leaf**: it owns `TrustTier`, `TrustCreatedBy`, `TrustTierDeriver`, and `SignedContract` envelopes (canonical bytes + signature). It does NOT import `contract.CompositionContract` or `contract.Provenance`. `contract/` adapts `Provenance.createdBy` into the trust-owned `TrustCreatedBy` input and calls `TrustTierDeriver.derive(createdBy)` to populate `Trust.tier` — the derivation has exactly one home.
 - `description/`, `claim/`, `manifest/`, `documentation/`, `runtimebinding/`, `questions/`, `resolver/`, `versioning/`, `validation/` must not depend on `broker/` or `spi/`.
 - `documentation/` may validate references to contracts and runtime bindings, but it must not inspect host registries
-  directly or scan implementation classes. Hosts pass registered capability names as projection input.
+  directly or scan implementation classes. Hosts pass registered capability names as projection input, as
+  `RegistrationObservation`s (HLD-C2 G.3).
+- `documentation/` has no HTTP client and no server. Observing a remote host's registration report is the embedding
+  service's job (for example the API catalog); DCP owns the report's shape and codec only.
+- `documentation/` may use `host/` only for value types:
+  - the verified-set types `VerifiedComposition` and `VerifiedContract`, so an unverified contract set cannot be
+    projected;
+  - the admission evidence types `HostReport.AdmittedComponent`, `ProviderArtifactPin` and `PackagedResources`, so a
+    host view documents hosted components from what the host actually verified.
+
+  It must not use `InProcessComponentHost` or anything that reaches `broker/` or `spi/`.
 - `fault/` is a schema/runtime-decision package. It may read claims to evaluate declared fault policy, but it must not depend on broker/SPI or any concrete monitoring adapter.
 - `broker/` must not depend on `questions/`, `manifest/`, `documentation/`, or `description/`. Interview rendering,
   manifest projection, and documentation projection are outside the runtime broker; the broker is invocation-only.
@@ -321,8 +341,30 @@ public record Offer(
         @NotBlank String capability, @NotBlank String description,
         ConsumerAccess consumerAccess, OfferInterface offerInterface,
         Stability stability, @NotBlank String version,
-        boolean metered, String costImplications
+        boolean metered, String costImplications,
+        OfferDocumentation documentation                 // HLD-C2 A.6; null when absent
 ) { ... }
+
+// HLD-C2 A.6: payload schemas for generated documentation, one entry per invocation operation. Never read by
+// CapabilityResolver / OfferDetailMatcher.
+public record OfferDocumentation(String summary, List<OperationDocumentation> operations) { ... }
+public record OperationDocumentation(String operation, String summary, ArtifactRef requestSchema, ArtifactRef responseSchema) { ... }
+
+// HLD-C2 A.12: one file inside the claim's own artifact, pinned by content hash.
+public record ArtifactRef(String path, ArtifactMediaType mediaType, String sha256) { ... }
+public enum ArtifactMediaType {
+    SCHEMA_JSON("application/schema+json"),
+    OPENAPI_JSON("application/vnd.oai.openapi+json"),
+    OPENAPI_YAML("application/vnd.oai.openapi+yaml");
+    // @JsonValue is the media-type string, so the wire carries the media type, not the constant name.
+}
+
+// HLD-C2 A.13: product HTTP route documents. Claim gains `List<ApiDocument> apiDocuments` (empty when absent).
+public record ApiDocument(String apiId, String description, ArtifactRef openapi, List<String> surfaces) { ... }
+
+// Compatibility: Offer keeps its previous 8-argument constructor (documentation = null), and Claim keeps its previous
+// 10-argument constructor (apiDocuments = List.of()), so every existing producer compiles unchanged. Producers that
+// document their offers use the canonical constructors.
 public enum ConsumerAccess { ANY, NAMED_COMPONENTS_ONLY }
 public enum Stability { EXPERIMENTAL, EVOLVING, STABLE, DEPRECATED }
 public enum InterfaceKind { HTTP_API, EVENT_STREAM, NEGOTIATION, IN_PROCESS }
@@ -360,6 +402,28 @@ or `FaultPolicy.empty()` explicitly so missing fault vocabulary is caught during
 - `metadata.dcpVersion >= 0.2.0`; `metadata.claimVersion == identity.version`.
 - Refusal specificity: emit a warning (not a hard fail) when a refusal's `concern` is "everything-else" or its `rationale` is below a minimum length.
 - Each offer's `version` valid SemVer; `metered` defaults to `false` when omitted; `costImplications` required when `metered == true` or `interfaceKind == NEGOTIATION`.
+- `documentation`, when present, has a non-empty `operations` list with non-blank, unique operation names
+  (`CLAIM_DOCUMENTATION_INCOMPLETE`, `CLAIM_DOCUMENTATION_OPERATION_DUPLICATE`). Every operation has both schema refs, and
+  both use `SCHEMA_JSON` (`CLAIM_DOCUMENTATION_MEDIA_TYPE`). The root `type: object` rule is checked by
+  `ClaimArtifactValidator`, which holds the bytes.
+- Every `ArtifactRef` has a safe relative `path` (not absolute or empty; no `..`, `\`, empty segment or URI scheme) and a
+  64-character lower-case hex `sha256` (`ARTIFACT_REF_INVALID`). The validator checks only the ref's shape. Whether the
+  bytes exist and match is `ClaimArtifactValidator`'s job, because only a reader holding the artifact can check it.
+- `apiDocuments`: `apiId` kebab-case and unique, `surfaces` non-empty kebab-case, `openapi` an OpenAPI media type
+  (`CLAIM_API_DOCUMENT_INVALID`).
+- An `offerInterface.details` that carries `input_schema` or `output_schema` keys while the offer has no
+  `documentation` produces a WARNING, `CLAIM_DOCUMENTATION_HINT_ONLY`, pointing at A.6. It is a warning so existing
+  claims keep loading during migration; the hint never counts as documentation.
+
+Canonical hash: `ClaimHash` serializes `NON_NULL`, and `apiDocuments` is serialized only when non-empty, so a claim
+without the new fields keeps its canonical hash and existing pins stay valid. No canonicalization setting changes.
+
+Wire-name drift (recorded while specifying HLD-C2 A.13): the deployed claim wire name is `offer_interface`
+{`interface_kind`, `details`}, while HLD-C2 A.6 and `claim.schema.yaml` say `interface` {`kind`, `details`}.
+`PackagedClaim` reads with `FAIL_ON_UNKNOWN_PROPERTIES` off, so a spec-shaped `interface` block would currently be
+**dropped silently**. Before it reads `documentation` the claim codec accepts both spellings (`@JsonAlias("interface")`,
+`@JsonAlias("kind")`), and the spec's alignment is recorded as an open decision for the `dcp` repository. The
+canonical hash keeps serializing the record component names, so pins do not change.
 
 Validation results are structured records (see §8), never exceptions for expected validation failures.
 
@@ -384,6 +448,19 @@ public final class PackagedClaim {
   when none or more than one match, so a runtime on a classpath that also holds other components' jars still gets
   exactly its own claim and never another's.
 - The reader never edits the claim. Hashing for pinning stays with the catalog that admits the artifact.
+
+#### Bundled claims reader (HLD-C2 G.1 input 2)
+
+A deployment bundle carries the provider claims of its children as `claims/*.claim.{json,yaml}` beside the contracts
+(written by Fabric's `DcpRuntimeBundleWriter`). `com.unfurl.dcp.claim.BundledClaims.loadDirectory(Path)` returns them
+keyed by `ClaimKey(uri, version)`:
+- every file is validated by `ClaimValidator`;
+- two files with the same key, or a file that does not parse, fail the whole load;
+- an absent directory is an empty map.
+
+The reader does not check pins. Callers compare `ClaimHash.canonical` with each child's pinned hash, which is what
+`DocumentationProjector.plan` does. Flow's private reader in `DcpDeploymentHydrator.claims` moves here, so Flow and the API
+catalog share one reader.
 
 ### Fault Vocabulary And Propagation Gate (HLD-C2 A.10)
 
@@ -567,6 +644,9 @@ public record ProviderInstance(
         DeploymentKind deploymentKind, URI baseUrl, ConfigRef baseUrlRef,
         SecretRef credentialsRef
 ) { ... }
+// HLD-C2 C target_environment. tenant, region and namespace are optional and omitted when null, so existing bindings
+// serialize unchanged; documentation filters by tenant and environment. A TargetEnvironment(name) constructor remains.
+public record TargetEnvironment(String name, String tenant, String region, String namespace) { ... }
 public enum DeploymentKind { IN_PROCESS, CONTAINER, REMOTE_SERVICE, EXTERNAL_SAAS, WEBAPP, SIDECAR }
 
 public record SecretRef(@NotBlank String uri) { ... }       // reference only
@@ -585,6 +665,23 @@ public record RuntimeBindingMetadata(Map<String, Object> extensions) { ... }
 - **No inline secrets.** Any literal credential value (a non-`SecretRef` field carrying anything that looks like a credential) fails validation. Secrets are *references only*.
 - **Runtime-policy firewall.** Runtime binding may set `enabled`, timeouts within contract-permitted bounds, retry/circuit-breaker references, telemetry namespace, and audit flag — it MUST NOT change claim ownership, dependency satisfaction, conflict decisions, trust tier, or invalidation rules. The validator rejects any binding field that attempts to override these.
 - `baseUrl` and `baseUrlRef` mutually exclusive; `baseUrlRef` preferred outside local development.
+- **HTTP endpoint shape (HLD-C2 C, G.3).** For `deploymentKind` `CONTAINER`, `REMOTE_SERVICE` or `SIDECAR` with a
+  `baseUrl`, the URL's path MUST end with `/dcp/<binding.providerCapability>` of the validated contract
+  (`RUNTIME_BINDING_ENDPOINT_SHAPE`). A `baseUrlRef` is checked where it is resolved (`ServiceRootResolver`), because
+  the validator does no I/O.
+- **Identity binding reader (HLD-needs-driven-identity §5).** `IdentityBinding.from(List<CompositionContract> children,
+  Map<URI, RuntimeBinding> bindings)` (callers pass the verified children; `runtimebinding` stays free of `host/`) returns `Optional<IdentityBinding>`: empty when no child's `providerCapability` is
+  `identity-context`. Otherwise it returns the complete settings:
+  - `issuer`, and `audiences` keyed by provider claim URI;
+  - the tenant, roles and permissions claim names;
+  - `tokenEndpointRef` and `verificationKeysRef` (`config://`), and `clientCredentialsRef` (`secret://`);
+  - `serviceCredentials` keyed by claim URI.
+
+  It throws `IDENTITY_BINDING_INCOMPLETE` when the binding is missing or incomplete, or when the audience keys differ
+  from the contract's `neededBy`. Today this logic exists twice, in Flow's `IdentitySettings` and Foundry's
+  `CompositionIdentity`. It moves here so the API catalog reuses it instead of adding a third copy, and Flow and Foundry
+  switch to it in the same change. It reads values only; it never resolves references or calls the identity
+  provider.
 - **Aggregate containment.** Runtime binding metadata uses the same extension bridge as recursive claims: `contains`, `children`, `containsClaimUris`, and `childClaimUris`. Child values may be URI strings or maps with `bindingId`, `claimUri`, `uri`, or `ref`. `RuntimeBindingValidator.validateTree(root, bindingsById, contractsById)` walks the binding tree, validates every child binding, rejects missing child refs and cycles, and applies the inline-secret/runtime-policy firewall across the whole subtree.
 
 This keeps multi-component runtime assembly inside DCP constructs. Products such as Fabric/Flowfoundry may generate an aggregate parent binding, but they must not add product-specific runtime-wiring sidecars; every child edge is a DCP containment ref to another normal runtime binding.
@@ -652,29 +749,383 @@ runtime-binding, or product-intent creation; `ActionContext` is never serialized
 
 ### Capability Documentation Projection (HLD-C2 §G)
 
-Records in `com.unfurl.dcp.documentation`:
+Design: HLD-C2 G.1–G.5 and the `dcp` repository's DCP Documentation and DCP HTTP Binding specs. The package turns a
+verified composition, its claims and shipped artifacts, its runtime bindings, and one registration observation per
+service root into one deterministic model. It then renders that model as OpenAPI, a human summary and a report. It has
+no HTTP code: observing remote hosts belongs to the embedding service (the API catalog), and a host's own view
+(`HostDocumentationProjector`) uses its local registrations.
+
+#### Model (`com.unfurl.dcp.documentation`, snake_case on the wire, HLD-C2 G.2 / G.4)
 
 ```java
 public record CapabilityDocumentation(
-        URI documentId,
-        TargetEnvironment targetEnvironment,
-        DocumentationSource source,
-        List<DocumentationSurface> surfaces,
-        List<DocumentationSchemaRef> schemas,
-        DocumentationLifecycle lifecycle
-) { ... }
+        URI documentId, TargetEnvironment targetEnvironment, DocumentationSource source, IdentityMode identity,
+        List<DocumentationSurface> surfaces, List<DocumentedComponent> components,
+        DocumentationReport report, DocumentationLifecycle lifecycle) { ... }
 
-public record DocumentationSource(
-        List<URI> contractIds,
-        List<URI> runtimeBindingIds,
-        List<String> registeredCapabilities
-) { ... }
+public record DocumentationSource(URI rootContract,            // absent in a host view (no composition files)
+                                  List<URI> contracts, List<URI> runtimeBindings,
+                                  List<String> registeredCapabilities) { ... }
+public record DocumentationSurface(SurfaceKind kind, Visibility visibility, ConfigRef baseUrlRef, List<String> includes) { ... }
+// One per host (service root) with at least one documented capability; a host with none appears only in the report.
+public record DocumentedComponent(URI componentUri, String componentVersion, String name, String claimHash,
+                                  URI serviceRoot, boolean protectedComponent,   // identity contract protects it
+                                  List<DocumentedCapability> capabilities, List<DocumentedApi> apiDocuments) { ... }
+public record DocumentedCapability(String capability, String capabilityVersion, String description, URI contractId,
+                                   URI bindingId,                                // absent in a host view
+                                   EntrySurface surface, Visibility visibility, String path, URI hostedBy,
+                                   URI providerComponentUri, String providerComponentVersion,
+                                   List<DocumentedOperation> operations, List<String> faults) { ... }
+public record DocumentedOperation(String operation, String summary, ArtifactRef requestSchema, ArtifactRef responseSchema) { ... }
+// A host's DocumentedComponent lists its own capabilities and those it hosts; a hosted one has
+// surface HOSTED_IN_PROCESS, hostedBy = the host and providerComponentUri = the hosted component.
+public record DocumentedApi(String apiId, ArtifactRef openapi, Visibility visibility, List<String> servedSurfaces) { ... }
+
+public record DocumentationReport(List<ReportEntry> entries, List<ApiOperationExclusion> apiOperations) { ... }
+public record ReportEntry(URI contractId, URI bindingId, String capability, URI providerComponentUri,
+                          EntrySurface surface, EntryStatus status, ReasonCode reason, String detail,
+                          URI endpoint, Instant observedAt) { ... }
+public record ApiOperationExclusion(URI componentUri, String apiId, String operation, ReasonCode reason) { ... }
+
+public enum EntrySurface { HTTP, HOSTED_IN_PROCESS, EXTERNAL }
+public enum EntryStatus { ACTIVE, INACTIVE, NOT_PROBED }
+public enum ReasonCode { ACTIVE, POLICY_PRIVATE, BINDING_MISSING, BINDING_DISABLED, BINDING_ENDPOINT_MISSING,
+                         ENDPOINT_PATH_MISMATCH, HOST_UNKNOWN, PROVIDER_UNREACHABLE, REGISTRATION_UNAUTHORIZED,
+                         HOST_CLAIM_MISMATCH, CLAIM_MISMATCH, NOT_REGISTERED, EXTERNAL_SURFACE, SURFACE_NOT_SERVED }
+public enum IdentityMode { IN_CONTRACT, ABSENT }
+public enum Visibility { PUBLIC, INTERNAL, PRIVATE }
+public enum SurfaceKind { OPENAPI, HUMAN_SUMMARY, SWAGGER_UI, ASYNCAPI, MCP_TOOLS, SDK_METADATA }
+
+// Product policy input (HLD-C2 G.1 input 7): explicit entries win; `defaultVisibility` covers the rest.
+public record VisibilityPolicy(Visibility defaultVisibility, Map<String, Visibility> capabilities,
+                               Map<String, Visibility> apiDocuments) { ... }
 ```
 
-`CapabilityDocumentationValidator` verifies that each documented capability is backed by an accepted contract id, an
-active runtime binding id, a host-supplied registered capability name, and explicit request/response schema refs.
-It does not scan classpaths, plugin jars, tool registries, provider registries, prompts, model outputs, logs, or DTOs.
-Those sources can inform authoring, but they are not valid documentation proof.
+`TargetEnvironment` and `ConfigRef` are reused from `runtimebinding`, and `ArtifactRef` from `claim`. The record
+constructors enforce the G.4 invariants: `status == ACTIVE` exactly when `reason == ACTIVE`, and `NOT_PROBED` exactly
+when `reason == EXTERNAL_SURFACE`. Lists are sorted (components by URI, capabilities by name, report entries by contract
+id) and copied, so equal inputs give equal records.
+
+#### Registration report (HLD-C2 G.3)
+
+```java
+public record RegistrationReport(URI componentUri, String componentVersion, String claimHash, Instant observedAt,
+                                 List<Registration> registrations, List<String> servedSurfaces) { ... }
+public record Registration(URI contractId, String contractVersion, String capability, URI providerClaimUri,
+                           String providerClaimVersion, String providerClaimHash,
+                           EntrySurface surface, String path) { ... }
+// Invariant (constructor-checked by RegistrationReport): for surface HTTP, providerClaim{Uri,Version,Hash} equal the
+// report's componentUri/componentVersion/claimHash. For HOSTED_IN_PROCESS they are the hosted component's identity and
+// the hash the host verified against the contract's ProviderArtifactPin at admission (InProcessComponentHost).
+// A host never reports a hosted component under its own identity.
+
+// Sum type (sealed): the only ways an observation can end. The embedding service maps transport outcomes onto it.
+public sealed interface RegistrationObservation {
+    record Reported(RegistrationReport report, Instant observedAt) implements RegistrationObservation { }
+    record Unreachable(String detail, Instant observedAt) implements RegistrationObservation { }   // connect/timeout/5xx/malformed
+    record Unauthorized(int status, Instant observedAt) implements RegistrationObservation { }     // 401/403
+}
+
+public final class RegistrationReportCodec {   // the one JSON codec for the report, used by hosts and observers
+    public static byte[] encode(RegistrationReport report);
+    public static RegistrationReport decode(byte[] json);   // throws RegistrationReportException on a malformed body
+}
+```
+
+A host builds its report from what it has actually registered: the registrations its `CapabilityRegistrar` currently
+holds, its own `ClaimHash.canonical` of its packaged claim, and the surfaces it serves. For each hosted registration
+it also reports the provider evidence it already holds: the `ProviderArtifactPin.claimHash()` that
+`InProcessComponentHost` verified against the packaged claim of the admitted artifact, and that component's identity
+and version. Observers decode the body with
+`RegistrationReportCodec`; a body that does not decode is `Unreachable` with the decode error as its detail.
+
+#### Artifact store (Port + Adapters)
+
+```java
+public interface DocumentationArtifactStore {
+    /** The verified bytes of {@code ref}; throws ArtifactUnavailableException (missing / hash mismatch), never falls back. */
+    byte[] read(ArtifactRef ref);
+}
+// Adapter: deployment bundle layout `artifacts/sha256/<sha256>` (HLD-C2 A.12), resolved by hash.
+public final class ContentAddressedArtifactStore implements DocumentationArtifactStore { ... }
+// Adapter: a component's own artifact, resolved by `path`. Two factories, one behaviour:
+//   fromClassLoader(loader) - a running host reading its own jar (the host view);
+//   fromArchive(Path jar)   - a reader of a jar as data, never loading classes (Fabric's catalog scan).
+public final class PackagedArtifactStore implements DocumentationArtifactStore { ... }
+```
+
+Payload schemas also undergo draft 2020-12 meta-schema validation through the package-private `SchemaSyntaxValidator`
+port. `HarrelSchemaSyntaxValidator` is its offline adapter, using `dev.harrel:json-schema:1.9.1`, the existing Jackson
+provider, and the library's bundled dialect. External schema resolution is refused; no logging facade, network client
+or provider runtime is introduced. Invalid keyword shapes, including nested schemas, produce
+`SCHEMA_DOCUMENT_INVALID` diagnostics with instance pointers. Networknt remains test-only.
+
+Both adapters verify `sha256` over the exact bytes before returning them. `ClaimArtifactValidator.validate(claim,
+store)` checks every ref of a claim:
+- it is readable, and its hash matches;
+- **a JSON Schema** parses as draft 2020-12, and every `$ref` is a JSON-Pointer fragment (`#` or `#/...`) that resolves
+  inside the file. `$id`, `$anchor`, `$dynamicRef`, `$dynamicAnchor` and `$recursiveRef` are rejected (A.12). A schema
+  used as an operation's request or response schema has a root `type: object` (A.6); otherwise the code is
+  `SCHEMA_ROOT_NOT_OBJECT`;
+- **an OpenAPI document** parses as 3.1.0 and obeys A.13:
+  - every operation has an `x-dcp-surface` from the declared surfaces and an `x-dcp-access` of `public` or
+    `protected`, and any `x-dcp-permission` is a non-blank string;
+  - no path starts with `/dcp/`, and there are no `servers` or security;
+  - every `$ref` targets an existing `#/components/<section>/<name>[...]`, and there are no `$id` or anchor keywords;
+  - no method and path repeats across the claim's `api_documents` (`API_DOCUMENT_PATH_CONFLICT`);
+  - every path-level member other than `parameters` (for example `summary` or `description`) that several of the
+    claim's documents declare for the same path is identical after component renaming (`API_DOCUMENT_PATH_CONFLICT`).
+    The renderer merges those path items, so checking here refuses the claim at admission rather than at render.
+
+It returns a `SchemaValidationReport` with the codes `ARTIFACT_UNAVAILABLE`, `ARTIFACT_HASH_MISMATCH`,
+`SCHEMA_DOCUMENT_INVALID`, `API_DOCUMENT_INVALID` and `API_DOCUMENT_PATH_CONFLICT`; each detail names the JSON Pointer
+of the offending node. Fabric runs it at catalog scan, and projectors run it when they plan.
+
+#### Service roots (Strategy)
+
+`ServiceRootResolver.resolve(RuntimeBinding, CompositionContract, ConfigResolver)` returns a `ResolvedEndpoint`, which is
+one of `ServiceRoot(URI endpoint, URI root)`, `Missing(detail)` or `Mismatch(URI endpoint)`. A null `ConfigResolver`
+means the deployment mounts no configuration, so a reference is `Missing`.
+- `baseUrl` is used as written.
+- `baseUrlRef` is resolved through substrate's `ConfigResolver`, under the reference's own tenant
+  (`config://<tenant>/...`), as Flow resolves its identity references. The resolved document's
+  `value` is the endpoint, following the same convention `ClientCredentialsTokenSource` uses for a token endpoint
+  reference. An absent reference, or a document without a string `value`, is `Missing`.
+- The endpoint's path must end with `/dcp/<providerCapability>`. The root is the endpoint with that suffix removed.
+
+There is no other endpoint source: no environment variable, profile or lookup (HLD-C2 C).
+
+#### Gap gate
+
+`CapabilityDocumentationValidator.gaps(VerifiedComposition, Map<ClaimKey, Claim>, List<RuntimeBinding>, VisibilityPolicy)`
+takes the bindings because they decide each entry's surface, and returns every
+`DocumentationGap(contractId, capability, providerClaimUri)`. A gap is an entry whose surface is `HTTP` or
+`HOSTED_IN_PROCESS`, whose visibility is not `PRIVATE`, and whose provider offer has no `documentation` or an empty
+`operations` list (HLD-C2 G.1).
+The check is static. Fabric calls it before emitting a visibility policy, and `DocumentationProjector.plan` calls it and
+throws `DocumentationGapException` (`DOCUMENTATION_GAP`, naming every gap) when the result is not empty.
+
+#### Projector (Builder: static plan, then cheap re-projection)
+
+```java
+public final class DocumentationProjector {
+    public DocumentationPlan plan(DocumentationInputs inputs);   // static; throws on any input that cannot be projected
+}
+public record DocumentationInputs(VerifiedComposition composition, Map<ClaimKey, Claim> providerClaims,
+                                  List<RuntimeBinding> runtimeBindings, DocumentationArtifactStore artifacts,
+                                  VisibilityPolicy visibility, ConfigResolver configResolver, URI documentId,
+                                  String generatedBy) { ... }
+
+public final class DocumentationPlan {            // immutable; safe to share across observation threads
+    public Set<URI> serviceRoots();                // exactly the roots to observe; nothing else may be probed
+    public Map<URI, URI> hostComponentByRoot();    // the pinned host of each root, for per-host authorization
+    public DocumentationArtifactStore artifacts(); // verified bytes captured at plan time; renderers read them, no I/O
+    public CapabilityDocumentation project(Map<URI, RegistrationObservation> observations, Instant generatedAt);
+}
+```
+
+`plan` refuses the whole projection with a `DocumentationException` whose `code()` is one of:
+- **claims:** `CLAIM_MISSING`, `CLAIM_PIN_MISSING`, `CLAIM_PIN_MISMATCH`, `CLAIM_OFFER_MISSING`;
+- **artifacts:** `ARTIFACT_INVALID`;
+- **topology:** `SERVICE_ROOT_CONFLICT` (two pinned providers on one root, or one host bound at two roots),
+  `BINDING_DUPLICATE` (two bindings for one contract) and `TARGET_ENVIRONMENT_INCONSISTENT` (bindings naming different
+  environments);
+- **identity and gaps:** `IDENTITY_BINDING_INCOMPLETE` and `DOCUMENTATION_GAP`.
+
+`plan` does all static work once:
+
+1. **Claims.** For every child, the provider claim is looked up by `(claimUri, claimVersion)`. Its
+   `ClaimHash.canonical` must equal the child's pinned hash (`VerifiedContract.pin()`). A missing or mismatched claim
+   throws `DocumentationInputException(CLAIM_PIN_MISMATCH)`.
+2. **Artifacts.** `ClaimArtifactValidator` runs over every provider claim, and any error throws.
+3. **Gaps.** The gap gate runs, and a non-empty result throws `DocumentationGapException`.
+4. **Entries.** Each child gets its binding and surface (HLD-C2 G.1 table), its static reason
+   (`BINDING_MISSING`, `BINDING_DISABLED`, `BINDING_ENDPOINT_MISSING`, `ENDPOINT_PATH_MISMATCH`, `HOST_UNKNOWN`,
+   `POLICY_PRIVATE`, `EXTERNAL_SURFACE`) or, for an entry that can still be documented, its service root.
+   `hosted_in_process` entries take the service root of their consumer host, which is the provider of some `http`
+   entry; if none exists the reason is `HOST_UNKNOWN`.
+   - **One host per root.** Every service root gets exactly one expected host pin, `HostPin(claimUri, version,
+     claimHash)`, taken from the provider pins of the `http` entries that resolve to it.
+   - **Conflicts.** Two `http` entries on one root with different provider pins throw
+     `DocumentationInputException(SERVICE_ROOT_CONFLICT)`, naming both contracts.
+   - **Each entry's own pin.** Each entry also keeps its own expected provider pin, `ProviderPin(claimUri, version,
+     claimHash)`, from its contract and `VerifiedContract.pin()`.
+5. **Identity.** `IN_CONTRACT` when a child's `providerCapability` is `identity-context`, otherwise `ABSENT`. The
+   protected audiences are read from that child's binding exactly as hosts read them (`configuration.values.audiences`).
+
+`project` applies the observations to the entries that can still be documented:
+- `Unreachable` gives `PROVIDER_UNREACHABLE`, and `Unauthorized` gives `REGISTRATION_UNAUTHORIZED`.
+- **Host check (per root).** If the report's `componentUri`, `componentVersion` or `claimHash` differs from the root's
+  `HostPin`, every entry on that root gets `HOST_CLAIM_MISMATCH`. The detail names the field.
+- **Provider check (per entry).**
+  - If the report does not list the entry's contract id and version, the reason is `NOT_REGISTERED`.
+  - If the registration's `providerClaimUri`, `providerClaimVersion` or `providerClaimHash` differs from the entry's
+    `ProviderPin`, the reason is `CLAIM_MISMATCH`.
+  - For an `http` entry the two pins coincide. For a `hosted_in_process` entry the host check uses the host's pin
+    while the provider check uses the hosted component's own, so a correctly admitted adapter is `ACTIVE`.
+- Otherwise the reason is `ACTIVE`.
+- An absent observation (a root never observed yet) is `PROVIDER_UNREACHABLE` with detail `not yet observed`. It is
+  never treated as active.
+
+Product API operations are filtered by the reported `servedSurfaces`, and each excluded operation is listed as
+`SURFACE_NOT_SERVED`. `project` does no I/O. It only reads the artifacts the plan has already loaded and verified, so
+re-projecting after every observation is cheap and deterministic.
+
+**Every observation is applied** (HLD-C2 G.1, Freshness). Callers re-project on every observation, not only on status
+changes, because three kinds of change matter without any status changing:
+- a provider can stay `ACTIVE` while its `servedSurfaces` change;
+- an inactive entry can move from one failure reason or detail to another;
+- `observedAt` advances on every observation.
+
+The rendered OpenAPI and summary carry no observation times, so their bytes (and the caller's ETags) change exactly
+when documented content changes. The report changes on every observation.
+
+`HostDocumentationProjector.project(HostDocumentationInputs, Instant generatedAt)` builds the host view (HLD-C2 G.2) from
+the same records and renderers. It returns `ProjectedDocumentation(CapabilityDocumentation documentation,
+DocumentationArtifactStore artifacts)`, so callers render without I/O and the projector keeps no state. The inputs also
+carry the host's `TargetEnvironment`, the document id and the projector identity:
+
+```java
+public record HostDocumentationInputs(
+        Claim ownClaim, DocumentationArtifactStore ownArtifacts,   // the host's packaged claim and its own jar
+        RegistrationReport local,                                  // built from the host's registrar right now
+        List<HostedComponentDocumentation> hosted,                 // one per component the host admitted in process
+        IdentityMode identity, Set<URI> protectedComponents, VisibilityPolicy policy, URI serviceRoot) { ... }
+
+// What the host verified at admission, never reconstructed: the packaged claim InProcessComponentHost compared with the
+// pin, the pin itself, and the component's artifacts read from the same verified in-memory jar snapshot.
+public record HostedComponentDocumentation(Claim claim, ProviderArtifactPin pin, DocumentationArtifactStore artifacts) {
+    public static HostedComponentDocumentation from(HostReport.AdmittedComponent admitted) { ... }
+}
+```
+
+Rules, all checked before anything is rendered:
+- **Matching (one direction).**
+  - Every `local` registration with surface `HOSTED_IN_PROCESS` must match exactly one `hosted` item, by claim
+    identity URI and version.
+  - That item's `ClaimHash.canonical(claim)` must equal both `pin.claimHash()` and the registration's
+    `providerClaimHash`.
+  - A registration without a matching item, two matching items, or any hash disagreement throws
+    `DocumentationInputException(HOST_VIEW_INPUT_MISMATCH)`, naming the component.
+- **Retained evidence is not an error.** A `hosted` item with no current registration is admission evidence kept after
+  its contracts were revoked or invalidated, because `HostReport.components()` outlives revocation while the
+  registration report does not. It is ignored for rendering, validation and gaps, and the rest of the view is
+  unaffected.
+- **Only registered capabilities are rendered.** For a matched hosted component, only the capabilities that `local`
+  currently lists are rendered, even if its claim offers more.
+- **Rendered hosted claims are validated like any provider's.** `ClaimArtifactValidator` runs over each matched hosted
+  claim and its store, and the gap gate runs over its rendered offers (`DOCUMENTATION_GAP`).
+- **Source of the documentation.** Descriptions, operations, schemas and faults of a hosted capability come from the
+  hosted claim. The registration contributes only identity, hashes and the fact of registration.
+
+The host view needs no composition files, so it also works for an embedded profile that has none. In that case only
+capabilities in `local` are documented, which means only capabilities the host's broker accepted (or the host's
+component host admitted).
+
+**`HostReport` exposes admission evidence** (In-Process Component Host). `HostReport.components()` maps each admitted
+component (`<claimUri>@<claimVersion>`) to `AdmittedComponent(Claim claim, ProviderArtifactPin pin, PackagedResources
+resources)`:
+- `claim` is the packaged claim `InProcessComponentHost` verified against `pin`.
+- `resources` is a read-only view, `Optional<byte[]> read(String path)`, over the same in-memory snapshot of the
+  claim-bearing jar that `PinnedJarArtifacts` hashed and loaded. Nothing is read from disk again.
+
+`PackagedArtifactStore.fromResources(PackagedResources)` adapts it, verifying each `artifact_ref`'s `sha256` as the
+other factories do. `host/` still has no dependency on `documentation/`.
+
+#### Renderers (Strategy)
+
+```java
+public interface DocumentationRenderer<T> { T render(CapabilityDocumentation docs, DocumentationArtifactStore artifacts); }
+public final class OpenApiDocumentRenderer   // one OpenAPI 3.1.0 document per DocumentedComponent with a serviceRoot
+        implements DocumentationRenderer<Map<URI, ObjectNode>> { ... }
+public final class HumanSummaryRenderer implements DocumentationRenderer<String> { ... }   // Markdown, every entry
+public final class DocumentationCodec { ... }   // snake_case JSON/YAML of CapabilityDocumentation (the report view)
+```
+
+`OpenApiDocumentRenderer` produces one document per component:
+- `openapi: 3.1.0`, `info` from the component's claim identity, and `servers: [{url: <service_root>}]`.
+- For each `ACTIVE` `http` capability, one operation `POST /dcp/<capability>` (HLD-C2 G.2, DCP invocation operations),
+  built by `EnvelopeRenderer`:
+  - **Per-operation envelopes.** For each documented operation `o`, `<capability>.<o>.envelope` is the G.3 request
+    with `invocation.operation: {const: o}` and `invocation.input: {$ref: <capability>.<o>.request}`.
+    `<capability>.<o>.success` is the G.3 result with `success: {const: true}` and
+    `output: {$ref: <capability>.<o>.response}`, and `<capability>.<o>.result` is
+    `oneOf: [<capability>.<o>.success, dcp.invocation.failure]`.
+  - **Failure branch.** It is written once per document as `dcp.invocation.failure`:
+    - `success: {const: false}`;
+    - `errorCode: {type: string}`, which is required; the operation's declared faults are listed in its
+      `description` and in `x-dcp-faults`, but not as an `enum`, because host failure codes are also valid;
+    - `errorMessage: {type: string}`;
+    - `output: {type: object}`, unconstrained, normally `{}`;
+    - `metadata: {type: object}`.
+
+    The operation's response schema is never applied to a failure.
+  - **Request body.** With one operation, the body is its envelope. With several, the body is
+    `oneOf: [<each envelope>]`; the `const` operations make the branches mutually exclusive, so an input such as `{}`
+    can never match two branches.
+  - **`200` response.** With one operation, the response is its result envelope. With several, it is `anyOf` over the
+    results, each branch marked `x-dcp-operation: o`.
+  - **Extensions.** `x-dcp-operations: {o: {request: <envelope ref>, response: <result ref>}}`, plus
+    `x-dcp-capability`, `x-dcp-contract` and `x-dcp-faults` (the claim's faults for this offer).
+  - **Transport responses:** `400`, `404` and `503`.
+- **Hosted capabilities.** For each `ACTIVE` `HOSTED_IN_PROCESS` capability of the component, an item in the top-level
+  `x-dcp-hosted-capabilities`, with fields `capability`, `provider_component_uri`, `provider_claim_version`,
+  `description`, `faults` and `operations: [{operation, request: $ref, response: $ref}]`. Its schemas are embedded under
+  `hosted.<provider slug>.<capability>.<operation>.request|response`. No path is generated, because readers never call
+  a hosted capability directly.
+- **Offer schemas are embedded with rebased references** (HLD-C2 G.2), by `SchemaEmbedder` (*Visitor* over the
+  Jackson tree):
+  - Each schema lands at `components.schemas.<name>`, where `<name>` is `<capability>.<operation>.request` or
+    `.response` (prefixed `hosted.<provider slug>.` for hosted capabilities); characters outside `[A-Za-z0-9._-]` map to
+    `_`, and a duplicate name throws `SCHEMA_NAME_COLLISION`.
+  - The schema is copied whole, `$defs` included.
+  - Every `$ref` value `#<p>` becomes `#/components/schemas/<escaped name><p>`; JSON-Pointer escaping turns `~` into
+    `~0` and `/` into `~1`.
+- **Product API documents are merged with renamed components**, by `ApiDocumentMerger`:
+  - Each entry of each components section (`schemas`, `responses`, `parameters`, `requestBodies`, `headers`,
+    `examples`, `links`, `callbacks`, `pathItems`) becomes `<api_id>.<name>`.
+  - Every `$ref` `#/components/<section>/<name><rest>`, in paths and in components alike, becomes
+    `#/components/<section>/<api_id>.<name><rest>`.
+  - Paths sharing a URL are merged by HTTP method. Duplicate methods and unequal shared path metadata fail with
+    `API_DOCUMENT_PATH_CONFLICT`; equal shared metadata is retained once. Parameters inherited by only one document
+    are moved to that document's operations before merging, preserving their scope and operation overrides.
+- **Guard.** `ReferenceResolver` resolves every `$ref` in the finished document. An unresolved one throws
+  `RENDER_REFERENCE_UNRESOLVED` with its pointer, and nothing is served.
+- **Security is per operation** (HLD-C2 G.1). With `IdentityMode.IN_CONTRACT` and a protected component, the renderer:
+  - declares `components.securitySchemes.bearerAuth` (`type: http, scheme: bearer, bearerFormat: JWT`);
+  - gives every `POST /dcp/<capability>` and every product operation marked `x-dcp-access: protected`
+    `security: [{bearerAuth: []}]` plus `401`/`403`;
+  - gives every operation marked `x-dcp-access: public` `security: []`;
+  - copies `x-dcp-permission` through.
+
+  No top-level `security` is ever written, so no operation inherits a requirement. For an unprotected component, or
+  with `ABSENT`, no operation has security, there is no scheme, and with `ABSENT` the `info.description` states that
+  the composition runs unauthenticated on a trusted network.
+- Output is serialized with sorted keys and fixed ordering, so the same inputs give the same bytes.
+
+Reserved kinds (`ASYNCAPI`, `MCP_TOOLS`, `SDK_METADATA`) have no renderer.
+`DocumentationRenderer.requireRenderable(kind)` throws `DocumentationException(UNSUPPORTED_SURFACE)` for them.
+
+Supporting types:
+- `DocumentationFilter(tenant, environment, contract, binding, surface)` (*Specification*) narrows a view, DCP
+  Documentation §5. It never changes a reason. A tenant or environment outside the projection's target environment keeps
+  nothing.
+- `Slugs.of(URI)` gives the URL-safe component slug. The API catalog's `{slug}` routes and the hosted schema prefixes
+  both use it.
+- `DocumentationCodec` writes the snake_case model as JSON or YAML (sorted, nulls omitted), and writes rendered trees
+  with `treeToJson` / `treeToYaml`.
+
+**Merging product documents that share a path.**
+- Operations from different documents are merged by method into one path item.
+- A repeated method is `API_DOCUMENT_PATH_CONFLICT`.
+- Path-level `parameters` are pushed into each source document's own operations, preserving operation-level overrides
+  by name and location, so they never leak to another document's operations.
+- Every other path-level member must be identical after component renaming. `ClaimArtifactValidator` enforces this at
+  admission (`API_DOCUMENT_PATH_CONFLICT`), and the renderer refuses it again as a guard.
+
+`CapabilityDocumentationValidator` and the projector never scan classpaths, plugin jars, tool registries, provider
+registries, prompts, model outputs, logs, DTOs, `offerInterface.details` hints, environment variables, DNS or
+orchestrator APIs. Those sources can inform authoring, but they are not valid documentation proof.
 
 ### Capability Resolver (HLD-C2 settled #6)
 
@@ -716,9 +1167,12 @@ public final class CrossSchemaValidator {
     public SchemaValidationReport validate(Claim claim, WebappManifest manifest);
     public SchemaValidationReport validate(CompositionContract contract, Map<URI, Claim> claimsByUri);
     public SchemaValidationReport validate(RuntimeBinding binding, CompositionContract contract);
-    public SchemaValidationReport validate(CapabilityDocumentation docs, DocumentationInputs inputs);
 }
 ```
+
+The documentation re-check lives in `documentation/` as `CapabilityDocumentationValidator.validate(CapabilityDocumentation,
+DocumentationInputs)`, not here, because `documentation/` already depends on `validation/`. A method here would make the
+two packages depend on each other.
 
 Checks performed:
 
@@ -728,6 +1182,12 @@ Checks performed:
 - A runtime binding's `contractId` and `contractVersion` resolve to a real contract; the binding does not attempt to alter ownership/dependency/conflict/trust/invalidation.
 - A capability documentation projection references accepted contracts, active runtime bindings, registered capabilities,
   explicit schemas, and declared faults; missing or implementation-discovered-only schemas fail validation.
+- `CapabilityDocumentationValidator.validate(CapabilityDocumentation, DocumentationInputs)` re-checks a produced
+  projection against its inputs:
+  - every `ACTIVE` capability is a child of the verified root, has an enabled binding and pinned, hash-verified schema
+    refs, and appears in the observed report;
+  - every child has exactly one report entry;
+  - no field carries a `secret://` reference or a credential.
 
 `SchemaValidationReport` is an immutable record carrying structured `Diagnostic`s with severity (`ERROR`, `WARNING`, `INFO`), location (claim URI, contract id, field path), and a stable code.
 
@@ -1215,7 +1675,9 @@ if a host chooses to share them, `SharedApi` prefixes the host adds explicitly.
   class resolves its own dependencies, such as DCP's semver4j, Hibernate Validator and Jackson, in the host's loader,
   so those are never companions.
 - Component code exchanges only shared or JDK types with the host. Shared methods whose signatures expose a non-shared
-  library type (DCP's Jackson-based `ContractCodec.canonicalMapper()`) are host-side only. A component that needs that
+  library type (`ContractCodec.canonicalMapper()`, the documentation renderer's `ObjectNode` results, and the
+  documentation codec's `JsonNode` inputs) are host-side only. These Jackson types are explicitly enumerated by
+  `SharedApiBoundaryTest`; they are not added to the shared class-loader prefixes. A component that needs that
   library brings its own copy as a companion and never passes its objects across the boundary. A DCP test enumerates
   the public signatures of `DCP_BASE` packages and lists every non-shared type they expose, so that set stays
   explicit. For Kotak, only `kotak-neo-deployment`, which is not a runtime artifact, calls `canonicalMapper()`.
@@ -1451,6 +1913,7 @@ Success returns `HostReport`:
 public record HostReport<R extends CapabilityRegistrar>(
         Map<String, R> registrars,              // by component, "<claimUri>@<claimVersion>"; the component's own registrar
         Map<String, ComponentScope> scopes,     // same keys: run every call into the registrar, and into what it returns, here
+        Map<String, AdmittedComponent> components, // same keys: the verified claim, pin and packaged resources (documentation)
         List<AdmittedOperation> operations,     // one per admitted contract, ordered by contract id
         List<String> ignoredArtifacts,          // delivered jars no hosted contract pins; never loaded (closed world)
         List<String> notHostedContracts) {      // verified contracts whose transport is not IN_PROCESS
@@ -1458,8 +1921,16 @@ public record HostReport<R extends CapabilityRegistrar>(
                                     URI contractId, String contractVersion,
                                     Map<String, Object> configuration,                    // redacted: no secret-ref values
                                     Map<String, EffectiveConfiguration.Origin> configurationOrigins) { }
+    // Admission evidence for documentation (HLD-C2 G.2 host view): exactly what was verified, never re-read from disk.
+    public record AdmittedComponent(Claim claim, ProviderArtifactPin pin, PackagedResources resources) { }
 }
+// Read-only view over one pinned jar's in-memory snapshot (PinnedJarArtifacts.packagedResources(pin)); data only.
+public interface PackagedResources { Optional<byte[]> read(String path); }
 ```
+
+`components` has the same keys as `registrars` (the constructor checks it). `PinnedJarArtifacts` gains
+`packagedResources(ProviderArtifactPin)`, which returns a `PackagedResources` view over the claim-bearing artifact's
+snapshot. The view reads entries as data with the same multi-release rules as stage 1, and never loads a class.
 
 An unpinned jar is never opened for loading, so an activation it declares is ignored with it and appears only as an
 ignored artifact.
@@ -1695,7 +2166,66 @@ Unit tests:
 - Question schema renderer: human-interview and model-prompt views are structurally identical after normalization;
   action-context inputs select targeted questions while remaining absent from Plane 3 invocation artifacts.
 - Capability documentation projection: generated OpenAPI/Swagger/AsyncAPI/MCP docs expose only accepted contracts,
-  active runtime bindings, host-registered capabilities, explicit schemas, and declared faults.
+  active runtime bindings, host-registered capabilities, explicit schemas, and declared faults. Concretely:
+  - one test per reason code (G.4), each driving exactly one input to the failing state;
+  - an absent observation is never `ACTIVE`;
+  - a gap throws `DOCUMENTATION_GAP` and names every gap, and a `PRIVATE` offer without schemas is not a gap;
+  - a claim-hash or artifact-hash mismatch throws;
+  - `ServiceRootResolver` handles `baseUrl`, a resolved and an unresolved `baseUrlRef`, and a wrong suffix;
+  - `api_documents` operations are filtered by served surfaces and the excluded ones are reported;
+  - the OpenAPI output is golden-tested byte for byte in both identity modes: with an identity contract it has
+    `bearerAuth` and 401/403; without one it has neither and carries the unauthenticated statement;
+  - schemas are embedded with rebased references, and product-API component names are prefixed with every reference rewritten;
+  - the host view documents only locally registered capabilities;
+  - **hosted components:** a correctly admitted hosted adapter on a host is `ACTIVE`. A host whose own hash differs
+    gives `HOST_CLAIM_MISMATCH` on every entry of its root. A hosted registration with the wrong provider hash gives
+    `CLAIM_MISMATCH` on that entry only. Two pinned providers on one root throw `SERVICE_ROOT_CONFLICT`;
+  - **freshness:**
+    - a served-surface change while `ACTIVE` changes the OpenAPI bytes;
+    - a move from `PROVIDER_UNREACHABLE` to `REGISTRATION_UNAUTHORIZED` changes the report;
+    - a timestamp-only observation changes the report but not the OpenAPI bytes;
+  - **reference rebasing:**
+    - an offer schema with `$defs` and an internal `#/$defs/Input` ref, nested refs, and a capability name needing
+      escaping all resolve after embedding;
+    - a product document whose schemas, responses and parameters reference each other has every ref rewritten under
+      `<api_id>.`;
+    - a remote ref, an `$id`, an `$anchor` or a ref to `#/paths/...` is rejected by `ClaimArtifactValidator`;
+    - a deliberately broken tree trips `RENDER_REFERENCE_UNRESOLVED`;
+  - **operations:**
+    - a two-operation capability whose inputs are both `{}` renders a `oneOf` whose `const` operations make every
+      envelope match exactly one branch;
+    - the response is an `anyOf` with `x-dcp-operation` on each branch, and `x-dcp-operations` maps both operations;
+    - **faults:**
+      - a fault result `{success: false, errorCode: X, output: {}}` validates against every operation's result,
+        including operations whose response schema requires fields (the catalog's `summary` requires `markdown`);
+      - a success whose `output` lacks a required field does not validate;
+      - `{success: false}` without `errorCode` does not validate;
+    - a single-operation capability renders no `oneOf`;
+    - a single operation branching on an input `action` field validates with its own `oneOf`;
+    - a non-object root schema is `SCHEMA_ROOT_NOT_OBJECT`, and duplicate operation names are rejected;
+  - **host view with hosted components:**
+    - a host with two admitted components renders both under `x-dcp-hosted-capabilities`, with descriptions, operations,
+      faults and schemas taken from their own claims, embedded under `hosted.<slug>.`;
+    - a hosted registration without its admitted component, or a hash disagreement, is `HOST_VIEW_INPUT_MISMATCH`;
+    - **revocation:** a component whose last contract was revoked (admitted, but with no registration) is not
+      rendered and causes no error, and the host's own capabilities and other hosted components still render. A
+      component with one of two contracts revoked renders only the remaining capability. A retained component with a
+      bad artifact does not fail the view;
+    - a hosted claim with a bad artifact fails;
+    - `PackagedArtifactStore.fromResources` reads from the snapshot and re-verifies each hash;
+    - `HostReport.components` keys equal the `registrars` keys;
+  - **per-operation security:** with identity, a protected component's public operations render `security: []` and
+    its protected ones `bearerAuth` plus 401/403. An unprotected component has none. There is never top-level security.
+    A missing `x-dcp-access` is rejected;
+  - the codec round-trips reports and projections.
+- Claim documentation fields:
+  - `Offer`/`Claim` compatibility constructors;
+  - a claim without the new fields keeps its pre-change canonical hash (golden hash of an existing claim);
+  - `ArtifactRef` path and hash shape rules;
+  - `CLAIM_DOCUMENTATION_HINT_ONLY` is a warning, not an error;
+  - `@JsonAlias` reads both `offer_interface` and `interface`.
+- `RuntimeBindingValidator` rejects an HTTP-kind `baseUrl` without the `/dcp/<capability>` suffix
+  (`RUNTIME_BINDING_ENDPOINT_SHAPE`).
 - Contract freeze/load byte stability: round-trip bytes equal.
 - Contract signing/verification: valid signature accepted; tampered bytes rejected; wrong key rejected; missing key returns structured error (not exception).
 - Broker: `present` returns `ACCEPT(MATCH_FOUND)` when contract matches; `REFUSE(NO_MATCHING_CONTRACT)` with redirection when no match; `REFUSE(SIGNATURE_INVALID)` on tampered/wrong-key contracts; `REFUSE(CLAIM_MALFORMED)` on shape failure; `REFUSE(DCP_VERSION_UNSUPPORTED)` for old/new dcp versions. `accept(disposition, registrar, factory, ctx)` accepts only `DispositionKind.ACCEPT`, rejects missing/stale id/version with `BROKER_ACCEPT_INVALID`, fails absent frozen contracts with `CONTRACT_NOT_FOUND`, re-verifies the signature, and registers exactly the contract's single binding through the `CapabilityRegistrar`; `revoke` calls `unregister`; `CONTRACT_INVALIDATED` revokes without re-negotiating.
@@ -1719,6 +2249,10 @@ Architecture tests (ArchUnit) — **package-scoped within a single Maven artifac
 - `broker/` does not import `documentation/`; docs generation is a host projection over accepted runtime state.
 - `broker/` does not import `com.unfurl.substrate.ports.CapabilityRegistry`; it must go through `spi.CapabilityRegistrar`.
 - `description/`, `claim/`, `manifest/`, `documentation/`, `runtimebinding/`, `questions/`, `resolver/`, `versioning/`, `validation/` do not import `broker/` or `spi/`.
+- `documentation/` imports from `host/` only `VerifiedComposition`, `VerifiedContracts`, `VerifiedContract`,
+  `ProviderArtifactPin`, `HostReport.AdmittedComponent` and `PackagedResources`, and nothing from `broker/` or `spi/`.
+- `host/` does not import `documentation/`.
+- `documentation/` uses no HTTP client or server types (the general no-HTTP rule, asserted for this package by name).
 - `trust/` does not import `contract.CompositionContract`; only `SignedContract` envelopes cross the boundary; `trust/` is a leaf with no in-artifact upstream dependencies.
 - `unfurl-dcp` may only import `unfurl-substrate`'s composition-api and ports artifacts; never the engine.
 
@@ -1729,6 +2263,7 @@ Enterprise tests:
 - `correlationId` propagates from `ExecutionContext` through every broker event and contract invocation tag.
 - `OfflineContractVerifier` opens no sockets and reads no remote keys.
 - Runtime binding rejects any inline credential value; only `SecretRef` is accepted.
+- `DocumentationPlan.project` performs no I/O, and two projections of equal inputs are byte-identical.
 
 ---
 
@@ -1743,7 +2278,17 @@ Enterprise tests:
 7. Implement `contract/` records, `ContractValidator`, canonical byte serialization, `ContractFreezer`, `ContractLoader`; `Trust.tier` populated via `TrustTierDeriver`.
 8. Implement `runtimebinding/` records and `RuntimeBindingValidator` (no-inline-secrets, runtime-policy firewall).
 9. Implement `questions/` schema model, `ActionContext`, canonical v0.2 set, `InterviewRenderer`, `ModelPromptRenderer`, `CapturedAnswer`/`AnswerCorpus`.
-10. Implement `documentation/` capability documentation projection records and validator.
+10. **[implemented]** Implement `documentation/` capability documentation projection. It depends on `host/`'s
+    verified-set types, so it lands after the in-process host's `VerifiedComposition` (already implemented). Order:
+    1. claim fields (`OfferDocumentation`, `ArtifactRef`, `ApiDocument`, compatibility constructors, `@JsonAlias`);
+    2. the runtime-binding endpoint-shape rule;
+    3. the model records and codecs, including `RegistrationReportCodec`;
+    4. the artifact stores and `ClaimArtifactValidator`;
+    5. `ServiceRootResolver`;
+    6. the gap gate;
+    7. `DocumentationProjector` / `DocumentationPlan`;
+    8. `HostDocumentationProjector`;
+    9. the OpenAPI and summary renderers.
 11. Implement `resolver/` (`CapabilityResolver`, `ResolutionRequest`, `ResolutionResult`).
 12. Implement `validation/` cross-schema service.
 13. Implement `fault/` (`FaultPolicy`, declarations, runtime signals, and `FaultPropagationGate`).
@@ -1779,3 +2324,18 @@ These notes flag the deltas this LLD introduces relative to its neighbors. They 
 - Acceptance criteria mirroring §"Testing And Architecture Enforcement" of this LLD (build-spec §8 broker, §9 SPI, §10 architecture/enterprise/property tests).
 
 The build spec and this LLD are now consistent.
+
+**Capability documentation consumers (HLD-C2 §G).** The `documentation/` package is consumed by:
+
+- **`unfurl-api-catalog`** (new): embeds `DocumentationProjector`. It owns the HTTP observation of
+  `/dcp/registrations`, the polling and the serving of the outputs (catalog HLD/LLD).
+- **`unfurl-flow`, `unfurl-foundry`**: these serve `GET /dcp/registrations` by building a `RegistrationReport` from their
+  registrar, and render their own `/openapi.json` through `HostDocumentationProjector` + `OpenApiDocumentRenderer`,
+  replacing `FlowOpenApiProjector`'s and `FoundryOpenApiProjector`'s hand-written maps. They ship their schemas and
+  product OpenAPI as `artifact_ref`s in their packaged claims.
+- **`unfurl-fabric`**: runs `ClaimArtifactValidator` at catalog scan, copies artifacts into the bundle's
+  `artifacts/sha256/` store, and runs the gap gate before it emits a visibility policy.
+- **`IdentityBinding`** replaces Flow's `IdentitySettings.from` and Foundry's `CompositionIdentity` reading logic.
+  Their product-specific wiring (token exchange, inbound security installation) stays in each product.
+- **Adapters (`unfurl-adapter-kotak-neo`, `unfurl-adapter-codex`, `unfurl-adapter-keycloak`) and Flow packages**: move
+  their `offer_interface.details.input_schema` / `output_schema` hints to `documentation` refs with hashes.

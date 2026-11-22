@@ -28,7 +28,10 @@ class SharedApiBoundaryTest {
     /** The non-shared, non-JDK types that public signatures of the shared packages expose today. Host-side only. */
     private static final Set<String> HOST_SIDE_ONLY = Set.of(
             // ContractCodec.canonicalMapper(): the canonical JSON mapper, used by hosts and composers only.
-            "com.fasterxml.jackson.databind.ObjectMapper");
+            "com.fasterxml.jackson.databind.ObjectMapper",
+            // Documentation rendering and tree encoding run in the host's loader; hosted components exchange no trees.
+            "com.fasterxml.jackson.databind.JsonNode",
+            "com.fasterxml.jackson.databind.node.ObjectNode");
 
     @Test
     void sharedPackagesExposeOnlyTheListedNonSharedTypes() {
