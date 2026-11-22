@@ -44,6 +44,49 @@ class HostDocumentationProjectorTest {
         assertThat(doc.at("/x-dcp-hosted-capabilities/0/description").asText()).isEqualTo("Tool tool.lookup");
     }
 
+    /**
+     * A host serving one capability under several contracts, such as a profile contract beside a composition's (HLD-C2
+     * G.2), renders it as one operation: one path, schemas written once, x-dcp-contracts listing both and an envelope that
+     * accepts either contract and refuses any other. The host's report keeps both registrations.
+     */
+    @Test
+    void severalServedContractsOnOneCapabilityRenderOneOperation() throws Exception {
+        DocumentationWorld world = DocumentationWorld.standard();
+        RegistrationReport base = world.report(HOST, "urn:c:agent");
+        Registration own = base.registrations().get(0);
+        List<Registration> registrations = new java.util.ArrayList<>(base.registrations());
+        registrations.add(new Registration(java.net.URI.create("urn:c:agent-profile"), "1.0.0", own.capability(),
+                own.providerClaimUri(), own.providerClaimVersion(), own.providerClaimHash(), own.surface(), own.path()));
+        RegistrationReport local = new RegistrationReport(base.componentUri(), base.componentVersion(), base.claimHash(),
+                base.observedAt(), registrations, base.servedSurfaces());
+
+        ProjectedDocumentation view = projector.project(inputs(world, local, List.of()), T0);
+        ObjectNode doc = new OpenApiDocumentRenderer().render(view.documentation(), view.artifacts()).get(HOST);
+
+        com.fasterxml.jackson.databind.JsonNode post = doc.at("/paths/~1dcp~1agent.run/post");
+        assertThat(post.path("x-dcp-contracts")).extracting(com.fasterxml.jackson.databind.JsonNode::asText)
+                .containsExactly("urn:c:agent", "urn:c:agent-profile");
+        assertThat(doc.at("/components/schemas/agent.run.agent.run.envelope/properties/invocation/properties/contractId/enum"))
+                .extracting(com.fasterxml.jackson.databind.JsonNode::asText).containsExactly("urn:c:agent", "urn:c:agent-profile");
+        for (String contract : List.of("urn:c:agent", "urn:c:agent-profile", "urn:c:flow")) {
+            String instance = "{\"invocation\":{\"contractId\":\"" + contract + "\",\"operation\":\"agent.run\",\"input\":{\"agent.run\":\"x\"}}}";
+            assertThat(valid(doc, "agent.run.agent.run.envelope", instance)).as(contract).isEqualTo(!contract.equals("urn:c:flow"));
+        }
+        assertThat(view.documentation().components().get(0).capabilities()).extracting(c -> c.contractId().toString())
+                .containsExactly("urn:c:agent", "urn:c:agent-profile");
+    }
+
+    /** Validates an instance against a named component schema of a rendered document with a 2020-12 validator. */
+    private static boolean valid(ObjectNode document, String schemaName, String instance) throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        ObjectNode wrapper = json.createObjectNode();
+        wrapper.put("$schema", "https://json-schema.org/draft/2020-12/schema");
+        wrapper.put("$ref", "#/components/schemas/" + schemaName);
+        wrapper.set("components", document.path("components"));
+        return com.networknt.schema.JsonSchemaFactory.getInstance(com.networknt.schema.SpecVersion.VersionFlag.V202012)
+                .getSchema(wrapper).validate(json.readTree(instance)).isEmpty();
+    }
+
     /** A component whose last contract was revoked is retained evidence: not rendered, and not an error. */
     @Test
     void revokedHostedComponentIsRetainedNotRendered() {

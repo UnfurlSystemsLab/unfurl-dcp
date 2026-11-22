@@ -1,5 +1,9 @@
 package com.unfurl.dcp.claim;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -22,6 +26,36 @@ public record ArtifactRef(String path, ArtifactMediaType mediaType, String sha25
     /** Lower-case hex SHA-256, the only accepted hash form. */
     public static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
     private static final Pattern SCHEME = Pattern.compile("^[A-Za-z][A-Za-z0-9+.-]*:");
+
+    /**
+     * Factory for claims built in code (adapters, Flow packages): pins the exact bytes a build ships at {@code path}. The
+     * caller serializes the file once and passes the same bytes here and to the file it writes, so the reference and the
+     * file cannot drift. The result is checked by {@link #shapeViolation()} like any parsed reference.
+     *
+     * @param path      relative path inside the claim's own artifact
+     * @param mediaType what the file is
+     * @param bytes     the file's exact bytes; never null
+     * @return the reference with the bytes' SHA-256
+     */
+    public static ArtifactRef of(String path, ArtifactMediaType mediaType, byte[] bytes) {
+        return new ArtifactRef(path, mediaType, sha256Of(bytes));
+    }
+
+    /**
+     * The one hash rule of A.12: lower-case hex SHA-256 of the exact bytes. Artifact stores verify with it, and
+     * {@link #of} pins with it.
+     *
+     * @param bytes the bytes; never null
+     * @return 64 lower-case hex characters
+     */
+    public static String sha256Of(byte[] bytes) {
+        Objects.requireNonNull(bytes, "bytes");
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is unavailable", ex);
+        }
+    }
 
     /**
      * Shape rule (A.12): the path is relative, non-empty and stays inside the artifact, the media type is present, and the

@@ -18,8 +18,10 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Renderer (Strategy): one OpenAPI 3.1.0 document per documented component (DCP HLD-C2 G.2).
@@ -81,13 +83,24 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
         ArrayNode hosted = NODES.arrayNode();
         boolean anyHttp = false;
 
+        // Several contracts on one capability share its path and offer, so each group renders once (G.2): HTTP entries by
+        // path, hosted entries by provider component and capability. First-seen order keeps the output stable.
+        Map<String, List<DocumentedCapability>> httpGroups = new LinkedHashMap<>();
+        Map<String, List<DocumentedCapability>> hostedGroups = new LinkedHashMap<>();
         for (DocumentedCapability capability : component.capabilities()) {
             if (capability.surface() == EntrySurface.HTTP) {
-                anyHttp = true;
-                paths.put(capability.path(), dcpPathItem(capability, secured, schemas, artifacts));
+                httpGroups.computeIfAbsent(capability.path(), key -> new ArrayList<>()).add(capability);
             } else if (capability.surface() == EntrySurface.HOSTED_IN_PROCESS) {
-                hosted.add(hostedItem(capability, schemas, artifacts));
+                hostedGroups.computeIfAbsent(capability.providerComponentUri() + " " + capability.capability(),
+                        key -> new ArrayList<>()).add(capability);
             }
+        }
+        for (Map.Entry<String, List<DocumentedCapability>> group : httpGroups.entrySet()) {
+            anyHttp = true;
+            paths.put(group.getKey(), dcpPathItem(Grouped.of(group.getValue()), secured, schemas, artifacts));
+        }
+        for (List<DocumentedCapability> group : hostedGroups.values()) {
+            hosted.add(hostedItem(Grouped.of(group), schemas, artifacts));
         }
         if (anyHttp) {
             schemas.put(FAILURE, failureSchema());
@@ -137,8 +150,45 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
         return root;
     }
 
-    /** The {@code POST /dcp/<capability>} path item of an HTTP capability. */
-    private ObjectNode dcpPathItem(DocumentedCapability capability, boolean secured, Schemas schemas, DocumentationArtifactStore artifacts) {
+    /**
+     * Value Object: the documented entries of one component that share a capability, rendered as one operation (HLD-C2
+     * G.2, several contracts). The entries share the provider's one offer, so everything rendered except the contract
+     * ids comes from the first; the factory checks that the others agree, so no entry is silently dropped.
+     *
+     * @param capability  the group's representative entry
+     * @param contractIds every grouped contract id, sorted and distinct
+     */
+    private record Grouped(DocumentedCapability capability, List<String> contractIds) {
+        /**
+         * Factory: groups entries that must describe one offer.
+         *
+         * @throws DocumentationException {@code CAPABILITY_DOCUMENTATION_CONFLICT} when two entries disagree on the
+         *                                capability, provider, description, operations or faults
+         */
+        static Grouped of(List<DocumentedCapability> entries) {
+            DocumentedCapability first = entries.get(0);
+            Set<String> ids = new TreeSet<>();
+            for (DocumentedCapability entry : entries) {
+                boolean agrees = entry.capability().equals(first.capability())
+                        && entry.providerComponentUri().equals(first.providerComponentUri())
+                        && Objects.equals(entry.providerComponentVersion(), first.providerComponentVersion())
+                        && Objects.equals(entry.description(), first.description())
+                        && entry.operations().equals(first.operations())
+                        && entry.faults().equals(first.faults());
+                if (!agrees) {
+                    throw new DocumentationException(DocumentationException.CAPABILITY_DOCUMENTATION_CONFLICT,
+                            "contracts " + first.contractId() + " and " + entry.contractId() + " both document "
+                                    + first.capability() + " but describe it differently");
+                }
+                ids.add(entry.contractId().toString());
+            }
+            return new Grouped(first, List.copyOf(ids));
+        }
+    }
+
+    /** The {@code POST /dcp/<capability>} path item of an HTTP capability, covering every contract it is served under. */
+    private ObjectNode dcpPathItem(Grouped group, boolean secured, Schemas schemas, DocumentationArtifactStore artifacts) {
+        DocumentedCapability capability = group.capability();
         String base = Slugs.componentName(capability.capability());
         List<String> envelopes = new ArrayList<>();
         List<String> results = new ArrayList<>();
@@ -149,7 +199,7 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
             String response = name + ".response";
             schemas.put(request, embed(artifacts, operation.requestSchema(), request));
             schemas.put(response, embed(artifacts, operation.responseSchema(), response));
-            schemas.put(name + ".envelope", envelope(capability, operation.operation(), request, !secured));
+            schemas.put(name + ".envelope", envelope(group.contractIds(), operation.operation(), request, !secured));
             schemas.put(name + ".success", success(response));
             ObjectNode result = NODES.objectNode();
             result.putArray("oneOf").add(ref(name + ".success")).add(ref(FAILURE));
@@ -167,7 +217,8 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
         post.put("summary", capability.description() == null ? capability.capability() : capability.description());
         post.putArray("tags").add("dcp");
         post.put("x-dcp-capability", capability.capability());
-        post.put("x-dcp-contract", capability.contractId().toString());
+        ArrayNode contracts = post.putArray("x-dcp-contracts");
+        group.contractIds().forEach(contracts::add);
         ArrayNode faults = post.putArray("x-dcp-faults");
         capability.faults().forEach(faults::add);
         post.set("x-dcp-operations", operationMap);
@@ -268,15 +319,20 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
         return report;
     }
 
-    /** One item of {@code x-dcp-hosted-capabilities}, with its schemas embedded under a provider prefix. */
-    private ObjectNode hostedItem(DocumentedCapability capability, Schemas schemas, DocumentationArtifactStore artifacts) {
+    /**
+     * One item of {@code x-dcp-hosted-capabilities}, with its schemas embedded under a provider prefix, covering every
+     * contract the capability is hosted under.
+     */
+    private ObjectNode hostedItem(Grouped group, Schemas schemas, DocumentationArtifactStore artifacts) {
+        DocumentedCapability capability = group.capability();
         String prefix = "hosted." + Slugs.of(capability.providerComponentUri()) + "." + Slugs.componentName(capability.capability());
         ObjectNode item = NODES.objectNode();
         item.put("capability", capability.capability());
         item.put("provider_component_uri", capability.providerComponentUri().toString());
         item.put("provider_claim_version", capability.providerComponentVersion());
         if (capability.description() != null) item.put("description", capability.description());
-        item.put("contract", capability.contractId().toString());
+        ArrayNode contracts = item.putArray("contracts");
+        group.contractIds().forEach(contracts::add);
         ArrayNode faults = item.putArray("faults");
         capability.faults().forEach(faults::add);
         ArrayNode operations = item.putArray("operations");
@@ -417,8 +473,11 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
         return JsonReferences.rewriteRefs(schema, value -> value.startsWith("#") ? base + value.substring(1) : value);
     }
 
-    /** The request envelope of one operation, with the operation fixed by {@code const}. */
-    private static ObjectNode envelope(DocumentedCapability capability, String operation, String requestSchema, boolean contextAllowed) {
+    /**
+     * The request envelope of one operation, with the operation fixed by {@code const} and the contract one of the ids the
+     * capability is served under ({@code enum}, sorted).
+     */
+    private static ObjectNode envelope(List<String> contractIds, String operation, String requestSchema, boolean contextAllowed) {
         ObjectNode envelope = NODES.objectNode();
         envelope.put("type", "object");
         envelope.putArray("required").add("invocation");
@@ -427,7 +486,8 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
         invocation.put("type", "object");
         invocation.putArray("required").add("contractId").add("operation").add("input");
         ObjectNode fields = invocation.putObject("properties");
-        fields.putObject("contractId").put("type", "string").put("const", capability.contractId().toString());
+        ArrayNode contractEnum = fields.putObject("contractId").put("type", "string").putArray("enum");
+        contractIds.forEach(contractEnum::add);
         fields.putObject("operation").put("const", operation);
         fields.putObject("consumerComponent").put("type", "string");
         fields.putObject("providerComponent").put("type", "string");

@@ -174,6 +174,35 @@ class DocumentationSupportTest {
         assertThat(DocumentationFilter.NONE.apply(docs)).isEqualTo(docs);
     }
 
+    /**
+     * A reference built in code with {@link ArtifactRef#of} pins exactly the bytes it was built from: it is well formed,
+     * a store holding those bytes returns them, and any other bytes at the same path are a hash mismatch.
+     */
+    @Test
+    void aCodeBuiltReferencePinsTheBytesItWasBuiltFrom(@TempDir Path dir) throws Exception {
+        byte[] bytes = "{\"type\":\"object\"}".getBytes(StandardCharsets.UTF_8);
+        ArtifactRef ref = ArtifactRef.of("dcp/s.json", ArtifactMediaType.SCHEMA_JSON, bytes);
+        assertThat(ref.shapeViolation()).isEmpty();
+        // The SHA-256 of these exact bytes, computed outside Java.
+        assertThat(ref.sha256()).isEqualTo("a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0");
+
+        Path jar = dir.resolve("c.jar");
+        writeJar(jar, "dcp/s.json", bytes);
+        assertThat(PackagedArtifactStore.fromArchive(jar).read(ref)).isEqualTo(bytes);
+        writeJar(jar, "dcp/s.json", "{\"type\": \"object\"}".getBytes(StandardCharsets.UTF_8));
+        assertThatThrownBy(() -> PackagedArtifactStore.fromArchive(jar).read(ref))
+                .satisfies(e -> assertThat(((DocumentationArtifactStore.ArtifactUnavailableException) e).code()).isEqualTo(ErrorCode.ARTIFACT_HASH_MISMATCH));
+    }
+
+    /** Writes a one-entry jar. */
+    private static void writeJar(Path jar, String entry, byte[] bytes) throws Exception {
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zip.putNextEntry(new ZipEntry(entry));
+            zip.write(bytes);
+            zip.closeEntry();
+        }
+    }
+
     /** Stores verify hashes; the archive store reads a jar as data, once. */
     @Test
     void storesVerifyHashes(@TempDir Path dir) throws Exception {

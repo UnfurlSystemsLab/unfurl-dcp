@@ -983,6 +983,15 @@ The rendered outputs are views of this one model:
 
 **DCP invocation operations.** For each documented `http` capability the document has one operation, `POST
 /dcp/<capability>`.
+- **Several contracts, one operation.** A component may serve one capability under several contracts at once, for
+  example a host's own profile contract beside a composition's child contracts, or two consumers' contracts with the
+  same provider. They share the one path and the provider's one offer, so they render as one operation: the renderer
+  groups a component's documented entries by capability (by path for `http`, and by provider component and capability
+  for `hosted_in_process`). The operation's `x-dcp-contracts` lists every grouped contract id in sorted order, and the
+  request envelope's `invocation.contractId` is an `enum` of exactly those ids. Grouped entries must agree on the
+  provider component and version, description, operations and faults; when they do not, rendering fails with
+  `CAPABILITY_DOCUMENTATION_CONFLICT` rather than choosing one. The report and the human summary keep one entry per
+  contract.
 - **Request body.**
   - With one operation, the body is that operation's envelope: `invocation.operation` is fixed with `const` and
     `invocation.input` refers to the operation's request schema.
@@ -1017,6 +1026,7 @@ it is served.
 are invoked through the host, never by the reader. They appear in the host's document under the top-level extension
 `x-dcp-hosted-capabilities`. Each item gives:
 - `capability`, `provider_component_uri`, `provider_claim_version` and the provider's description;
+- `contracts`: every contract the capability is hosted under, sorted;
 - `faults`;
 - for each operation, `operation` with `$ref`s to its embedded request and response schemas.
 

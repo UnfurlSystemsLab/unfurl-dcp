@@ -39,6 +39,8 @@ public class DocumentationException extends IllegalStateException {
     /** Rendering refusal codes. */
     public static final String API_DOCUMENT_PATH_CONFLICT = "API_DOCUMENT_PATH_CONFLICT";
     public static final String SCHEMA_NAME_COLLISION = "SCHEMA_NAME_COLLISION";
+    /** Two contracts on one capability of a component describe it differently, so it cannot render as one operation. */
+    public static final String CAPABILITY_DOCUMENTATION_CONFLICT = "CAPABILITY_DOCUMENTATION_CONFLICT";
     public static final String RENDER_REFERENCE_UNRESOLVED = "RENDER_REFERENCE_UNRESOLVED";
     public static final String UNSUPPORTED_SURFACE = "UNSUPPORTED_SURFACE";
 }

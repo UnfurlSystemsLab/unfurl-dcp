@@ -4,9 +4,6 @@ import com.unfurl.dcp.claim.ArtifactRef;
 import com.unfurl.dcp.documentation.DocumentationArtifactStore.ArtifactUnavailableException;
 import com.unfurl.dcp.validation.ErrorCode;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 
 /**
  * Utility: the hash check every artifact store applies, so the rule has one home (DCP HLD-C2 A.12).
@@ -14,13 +11,9 @@ import java.util.HexFormat;
 final class Artifacts {
     private Artifacts() { }
 
-    /** Lower-case hex SHA-256 of the bytes. */
+    /** Lower-case hex SHA-256 of the bytes: delegates to {@link ArtifactRef#sha256Of}, the one hash rule. */
     static String sha256(byte[] bytes) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is unavailable", ex);
-        }
+        return ArtifactRef.sha256Of(bytes);
     }
 
     /** Rejects a malformed reference before any read. */

@@ -23,11 +23,14 @@ class SuiteTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.cap = {"name": "fixture.read", "version": "1.0.0", "effect": "read"}
         self.report = self.artifact("report.txt", "Synthetic authoring fixture; no runtime executed.", "evidence")
-        self.claim = self.artifact("claim.json", json.dumps({"identity": {"uri": "urn:fixture", "version": "1.0.0"},
+        self.schemas = [self.artifact(name, '{"type":"object"}', "operation-schema") for name in ("dcp/input.json", "dcp/output.json")]
+        documentation = {"operations": [{"operation": "fixture.read",
+            "request_schema": {"path": "dcp/input.json", "media_type": "application/schema+json", "sha256": self.schemas[0]["sha256"]},
+            "response_schema": {"path": "dcp/output.json", "media_type": "application/schema+json", "sha256": self.schemas[1]["sha256"]}}]}
+        self.claim = self.artifact("dcp/claim.json", json.dumps({"identity": {"uri": "urn:fixture", "version": "1.0.0"},
             "offers": [{"capability": "fixture.read", "version": "1.0.0", "offer_interface": {
-                "details": {"effect": "READ_ONLY", "input_schema": "input.json", "output_schema": "output.json"}}}]}), "claim")
-        self.catalog = self.artifact("catalog.yaml", json.dumps({"claim": suite.load(self.root / "claim.json")}), "catalog")
-        self.schemas = [self.artifact(name, '{"type":"object"}', "operation-schema") for name in ("input.json", "output.json")]
+                "details": {"effect": "READ_ONLY"}}, "documentation": documentation}]}), "claim")
+        self.catalog = self.artifact("META-INF/unfurl-catalog.yaml", json.dumps({"claim": suite.load(self.root / "dcp/claim.json")}), "catalog")
         self.selected = {"id": "urn:fixture", "version": "1.0.0", "capabilities": [self.cap], "artifacts": [self.claim, self.catalog, *self.schemas]}
         self.binding = self.artifact("binding.json", '{"fixture":true}', "runtime-binding")
         self.entry = {"id": "urn:fixture", "version": "1.0.0", "domains": ["testing", "governance"],
@@ -175,13 +178,35 @@ class SuiteTests(unittest.TestCase):
 
     def test_registry_rejects_drift_and_schema_drift(self):
         """Scenario: artifact hashes reject changed claims and operation schemas."""
-        for name in ("claim.json", "input.json"):
+        for name in ("dcp/claim.json", "dcp/input.json"):
             with self.subTest(name=name):
                 original = (self.root / name).read_bytes()
                 (self.root / name).write_bytes(original + b" ")
                 with self.assertRaisesRegex(ValueError, "drift"):
                     suite.validate("registry", self.registry, self.root, True)
                 (self.root / name).write_bytes(original)
+
+    def test_registry_reads_typed_documentation_only(self):
+        """Scenario: schemas come from the claim's typed documentation pins; hints and stale pins are refused."""
+        suite.validate("registry", self.registry, self.root, True)
+        original = suite.load(self.root / "dcp/claim.json")
+
+        def with_offer(change):
+            """Builder: a registry over a copy of the original claim with one offer change, re-pinned."""
+            claim = deepcopy(original)
+            change(claim["offers"][0])
+            changed = deepcopy(self.registry)
+            changed["adapters"][0]["claim"] = self.artifact("dcp/claim.json", json.dumps(claim), "claim")
+            changed["adapters"][0]["catalog"] = self.artifact("META-INF/unfurl-catalog.yaml", json.dumps({"claim": claim}), "catalog")
+            return changed
+
+        hints_only = with_offer(lambda offer: (offer.pop("documentation"), offer["offer_interface"]["details"].update(
+            {"input_schema": "input.json", "output_schema": "output.json"})))
+        with self.assertRaisesRegex(ValueError, "no typed documentation"):
+            suite.validate("registry", hints_only, self.root, True)
+        stale = with_offer(lambda offer: offer["documentation"]["operations"][0]["request_schema"].update({"sha256": "0" * 64}))
+        with self.assertRaisesRegex(ValueError, "drift from its claim pin"):
+            suite.validate("registry", stale, self.root, True)
 
     def test_registry_rejects_false_capability_and_catalog(self):
         """Scenario: index summaries cannot add unsupported operations or change embedded claims."""
@@ -190,7 +215,7 @@ class SuiteTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "capabilities differ"):
             suite.validate("registry", changed, self.root, True)
         changed = deepcopy(self.registry)
-        changed["adapters"][0]["catalog"] = self.artifact("bad-catalog.yaml", '{"claim":{}}', "catalog")
+        changed["adapters"][0]["catalog"] = self.artifact("META-INF/bad-catalog.yaml", '{"claim":{}}', "catalog")
         with self.assertRaisesRegex(ValueError, "catalog claim differs"):
             suite.validate("registry", changed, self.root, True)
 
@@ -321,7 +346,7 @@ class SuiteTests(unittest.TestCase):
         """Scenario: modified packaged artifacts invalidate resume without overwriting saved pins."""
         progress = self.save("progress.json", self.progress(status="draft"))
         child = self.save("adapter-result.json", self.adapter())
-        (self.root / "claim.json").write_text("changed version", encoding="utf-8")
+        (self.root / "dcp/claim.json").write_text("changed version", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "drift"):
             suite.handoff(progress, child)
 

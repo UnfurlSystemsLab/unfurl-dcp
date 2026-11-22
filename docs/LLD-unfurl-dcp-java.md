@@ -351,7 +351,13 @@ public record OfferDocumentation(String summary, List<OperationDocumentation> op
 public record OperationDocumentation(String operation, String summary, ArtifactRef requestSchema, ArtifactRef responseSchema) { ... }
 
 // HLD-C2 A.12: one file inside the claim's own artifact, pinned by content hash.
-public record ArtifactRef(String path, ArtifactMediaType mediaType, String sha256) { ... }
+public record ArtifactRef(String path, ArtifactMediaType mediaType, String sha256) {
+    // Factory for claims built in code (adapters, Flow packages): pins the exact bytes the build ships at path, so the
+    // reference and the file come from one serialization and cannot drift. sha256Of is the one hash rule; the artifact
+    // stores verify with it too.
+    public static ArtifactRef of(String path, ArtifactMediaType mediaType, byte[] bytes) { ... }
+    public static String sha256Of(byte[] bytes) { ... }   // lower-case hex SHA-256
+}
 public enum ArtifactMediaType {
     SCHEMA_JSON("application/schema+json"),
     OPENAPI_JSON("application/vnd.oai.openapi+json"),
@@ -1079,7 +1085,13 @@ public final class DocumentationCodec { ... }   // snake_case JSON/YAML of Capab
   - **`200` response.** With one operation, the response is its result envelope. With several, it is `anyOf` over the
     results, each branch marked `x-dcp-operation: o`.
   - **Extensions.** `x-dcp-operations: {o: {request: <envelope ref>, response: <result ref>}}`, plus
-    `x-dcp-capability`, `x-dcp-contract` and `x-dcp-faults` (the claim's faults for this offer).
+    `x-dcp-capability`, `x-dcp-contracts` (sorted) and `x-dcp-faults` (the claim's faults for this offer).
+  - **Grouping (HLD-C2 G.2, several contracts).** The renderer groups the component's `HTTP` capabilities by `path`
+    before rendering, so one path item is written per path whatever the number of contracts. The envelope's
+    `invocation.contractId` is `enum: [<sorted contract ids>]`. Entries of one group must have equal capability,
+    provider component URI and version, description, operations and faults (`Grouped` Value Object, checked once);
+    otherwise `DocumentationException(CAPABILITY_DOCUMENTATION_CONFLICT)`. Schema names stay
+    `<capability>.<operation>.*`, written once per group, so they can never collide across contracts.
   - **Transport responses:** `400`, `404` and `503`.
 - **Registration report operation.** Every document has `GET /dcp/registrations` (HLD-C2 G.2), with `operationId:
   dcp.registrations`, tag `dcp`, and a `200` response whose schema is `dcp.registrations.report` and whose
@@ -1091,7 +1103,8 @@ public final class DocumentationCodec { ... }   // snake_case JSON/YAML of Capab
   - no `additionalProperties: false`, because readers ignore unknown fields and a newer host's report stays valid.
 - **Hosted capabilities.** For each `ACTIVE` `HOSTED_IN_PROCESS` capability of the component, an item in the top-level
   `x-dcp-hosted-capabilities`, with fields `capability`, `provider_component_uri`, `provider_claim_version`,
-  `description`, `faults` and `operations: [{operation, request: $ref, response: $ref}]`. Its schemas are embedded under
+  `description`, `contracts` (sorted), `faults` and `operations: [{operation, request: $ref, response: $ref}]`, grouped
+  by provider component and capability like the HTTP operations. Its schemas are embedded under
   `hosted.<provider slug>.<capability>.<operation>.request|response`. No path is generated, because readers never call
   a hosted capability directly.
 - **Offer schemas are embedded with rebased references** (HLD-C2 G.2), by `SchemaEmbedder` (*Visitor* over the
@@ -2365,5 +2378,8 @@ The build spec and this LLD are now consistent.
   `artifacts/sha256/` store, and runs the gap gate before it emits a visibility policy.
 - **`IdentityBinding`** replaces Flow's `IdentitySettings.from` and Foundry's `CompositionIdentity` reading logic.
   Their product-specific wiring (token exchange, inbound security installation) stays in each product.
-- **Adapters (`unfurl-adapter-kotak-neo`, `unfurl-adapter-codex`, `unfurl-adapter-keycloak`) and Flow packages**: move
-  their `offer_interface.details.input_schema` / `output_schema` hints to `documentation` refs with hashes.
+- **Adapters (`unfurl-adapter-kotak-neo`, `unfurl-adapter-codex`) and Flow packages**: their claims are built in code, so
+  they serialize each schema once and pin those bytes with `ArtifactRef.of` in `documentation`, writing the same bytes
+  into the jar; the `offer_interface.details.input_schema` / `output_schema` hints are removed. The adapter registry's
+  validator (`.agents/skills/dcp-software-assembly-generator/scripts/suite.py`) reads operation schemas from the typed
+  `documentation` pins only.

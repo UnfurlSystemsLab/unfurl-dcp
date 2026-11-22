@@ -12,9 +12,6 @@ import com.unfurl.dcp.claim.OperationDocumentation;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,13 +28,9 @@ public final class DocumentationFixtures {
     private DocumentationFixtures() {
     }
 
-    /** Hash helper: lower-case hex SHA-256 of the bytes, the form {@link ArtifactRef} requires. */
+    /** Hash helper: lower-case hex SHA-256 of the bytes, by {@link ArtifactRef#sha256Of}, the one hash rule. */
     public static String sha256(byte[] bytes) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException(ex);
-        }
+        return ArtifactRef.sha256Of(bytes);
     }
 
     /** Builds a JSON Schema reference whose hash matches {@code content}. */

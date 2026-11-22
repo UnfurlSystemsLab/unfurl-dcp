@@ -206,6 +206,55 @@ class OpenApiDocumentRendererTest {
         assertThat(doc.path("paths").has("/dcp/tool.lookup")).isFalse();
     }
 
+    /**
+     * Hosted capabilities group like HTTP ones (HLD-C2 G.2): two contracts under which a host runs one hosted capability
+     * render as one x-dcp-hosted-capabilities item listing both contracts, with its schemas written once.
+     */
+    @Test
+    void severalContractsOnOneHostedCapabilityRenderOneItem() {
+        DocumentationWorld world = DocumentationWorld.standard();
+        CapabilityDocumentation docs = withExtraContract(new DocumentationProjector().plan(world.inputs()).project(world.healthy(), T0),
+                "tool.lookup", "urn:c:tool-second", null);
+        ObjectNode doc = renderer.render(docs, world.store()).get(HOST);
+
+        assertThat(doc.path("x-dcp-hosted-capabilities")).singleElement().satisfies(hosted ->
+                assertThat(JSON.convertValue(hosted.path("contracts"), List.class)).containsExactly("urn:c:tool", "urn:c:tool-second"));
+    }
+
+    /**
+     * A copy of the projection whose host component documents {@code capability} under one more contract, like the
+     * entry it copies, or with {@code description} when given.
+     */
+    private static CapabilityDocumentation withExtraContract(CapabilityDocumentation docs, String capability, String contractId,
+                                                             String description) {
+        List<DocumentedComponent> components = docs.components().stream().map(component -> {
+            if (!component.componentUri().equals(HOST)) return component;
+            List<DocumentedCapability> capabilities = new ArrayList<>(component.capabilities());
+            DocumentedCapability copied = capabilities.stream().filter(c -> c.capability().equals(capability)).findFirst().orElseThrow();
+            capabilities.add(new DocumentedCapability(copied.capability(), copied.capabilityVersion(),
+                    description == null ? copied.description() : description, URI.create(contractId), copied.bindingId(),
+                    copied.surface(), copied.visibility(), copied.path(), copied.hostedBy(), copied.providerComponentUri(),
+                    copied.providerComponentVersion(), copied.operations(), copied.faults()));
+            return new DocumentedComponent(component.componentUri(), component.componentVersion(), component.name(),
+                    component.claimHash(), component.serviceRoot(), component.protectedComponent(), capabilities, component.apiDocuments());
+        }).toList();
+        return new CapabilityDocumentation(docs.documentId(), docs.targetEnvironment(), docs.source(), docs.identity(),
+                docs.surfaces(), components, docs.report(), docs.lifecycle());
+    }
+
+    /** Two contracts that describe one capability differently cannot share an operation; rendering refuses, naming both. */
+    @Test
+    void disagreeingContractsOnOneCapabilityAreRefused() {
+        DocumentationWorld world = DocumentationWorld.standard();
+        CapabilityDocumentation conflicting = withExtraContract(new DocumentationProjector().plan(world.inputs())
+                .project(world.healthy(), T0), "agent.run", "urn:c:agent-other", "a different description");
+
+        assertThatThrownBy(() -> renderer.render(conflicting, world.store()))
+                .isInstanceOf(DocumentationException.class)
+                .hasMessageContaining(DocumentationException.CAPABILITY_DOCUMENTATION_CONFLICT)
+                .hasMessageContaining("urn:c:agent").hasMessageContaining("urn:c:agent-other");
+    }
+
     /** Product components are renamed under the api id with every reference rewritten; unserved operations are absent. */
     @Test
     void productDocumentsAreMergedWithRenamedComponents() {

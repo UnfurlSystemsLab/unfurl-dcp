@@ -240,7 +240,11 @@ def verify_entry(entry, registry_dir: Path):
         verify_artifact(source, artifact)
     claim_path = verify_artifact(source, entry["claim"])
     claim = load(claim_path)
-    catalog = load(verify_artifact(source, entry["catalog"]))
+    catalog_path = verify_artifact(source, entry["catalog"])
+    catalog = load(catalog_path)
+    # Documentation paths are relative to the artifact (jar) root: the directory that holds the catalog's META-INF/.
+    require(catalog_path.parent.name == "META-INF", f"catalog is not under META-INF/: {catalog_path}")
+    artifact_root = catalog_path.parent.parent
     require(catalog.get("claim") == claim, "catalog claim differs from indexed claim")
     require(claim["identity"]["uri"] == entry["id"] and claim["identity"]["version"] == entry["version"],
             "registry identity/version differs from claim")
@@ -253,12 +257,25 @@ def verify_entry(entry, registry_dir: Path):
         details = offer.get("offer_interface", {}).get("details", {})
         effect = {"READ_ONLY": "read", "WRITE": "write", "MUTATING": "write"}.get(details.get("effect"))
         require(effect == capability["effect"], "claim needs explicit matching operation effect")
-        for name in ("input_schema", "output_schema"):
-            schema_path = confined(claim_path.parent, details.get(name, ""))
-            require(schema_path.is_file(), f"missing operation schema: {schema_path}")
+        for schema_path in documented_schemas(offer, artifact_root):
             require(any(confined(source, item["path"]) == schema_path for item in entry["artifacts"]),
                     f"operation schema is not pinned: {schema_path}")
             Draft202012Validator.check_schema(load(schema_path))
+
+
+def documented_schemas(offer, artifact_root: Path):
+    """Visitor: the request and response schema files of an offer's typed documentation (HLD-C2 A.6, A.12), each
+    resolved inside the component's artifact root and verified against the SHA-256 the claim itself pins. Untyped
+    interface.details hints are never read; an offer without documentation is refused."""
+    operations = (offer.get("documentation") or {}).get("operations") or []
+    require(operations, f"offer {offer.get('capability')} has no typed documentation operations")
+    for operation in operations:
+        for field in ("request_schema", "response_schema"):
+            ref = operation.get(field) or {}
+            path = confined(artifact_root, ref.get("path", ""))
+            require(path.is_file(), f"missing operation schema: {path}")
+            require(digest(path) == ref.get("sha256"), f"operation schema drift from its claim pin: {path}")
+            yield path
 
 
 def verify_selected(entry, base: Path):
