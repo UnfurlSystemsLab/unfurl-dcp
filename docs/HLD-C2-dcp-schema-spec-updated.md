@@ -967,6 +967,9 @@ capability_documentation:
     generated_at: timestamp
 ```
 
+Enumeration values are written exactly as listed, in lower case (`http`, `hosted_in_process`, `in_contract`, `active`).
+Reason codes (G.4) are the upper-case identifiers. The registration report (G.3) follows the same rule.
+
 The rendered outputs are views of this one model:
 
 - **OpenAPI**: one OpenAPI 3.1.0 document per component that has a `service_root`. It holds the component's
@@ -998,6 +1001,17 @@ The rendered outputs are views of this one model:
     success branches may both match.
 - **Operation map.** `x-dcp-operations` maps each operation name to its request envelope and result envelope, for
   tools that need the exact correlation OpenAPI cannot state.
+
+**Registration report operation.** Every rendered document also has `GET /dcp/registrations`. A component has a
+document only as a DCP HTTP host, and every DCP HTTP host serves its report (G.3), so the route is documented wherever
+it is served.
+- It has `operationId: dcp.registrations` and tag `dcp`. Its `200` response is the G.3 `registration_report` as the
+  JSON Schema `dcp.registrations.report`, written once per document by the renderer (a component never ships it), with
+  a `Cache-Control: no-store` response header. The schema allows unknown fields, as readers do, so a newer host's
+  report stays valid.
+- It is secured like the component's invocation operations. For a protected component under an identity contract it
+  carries the bearer requirement, `x-dcp-permission: dcp.registrations.read`, and `401` and `403`. Otherwise it has
+  no security.
 
 **Hosted capabilities.** A component's documented `hosted_in_process` capabilities have no HTTP path of their own: they
 are invoked through the host, never by the reader. They appear in the host's document under the top-level extension
@@ -1141,6 +1155,9 @@ registration_report:
   obtain one with the OAuth 2.0 client-credentials grant for their own service identity. Without an identity contract
   it is served unauthenticated, under the same trusted-network rule as invocation.
 - The response carries `Cache-Control: no-store`.
+- `registrations` is a reserved capability name. The report and the invoke paths share the `/dcp/` namespace, so a
+  claim that offers a capability named `registrations` is invalid (`CLAIM_CAPABILITY_RESERVED`).
+- The host's own OpenAPI document describes this route (G.2, registration report operation).
 
 **Observation rules for projectors.**
 - A projector probes only the service roots derived from the verified set's runtime bindings. It never scans networks

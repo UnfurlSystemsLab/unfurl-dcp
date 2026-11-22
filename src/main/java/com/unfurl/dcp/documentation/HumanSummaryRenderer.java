@@ -42,7 +42,7 @@ public final class HumanSummaryRenderer implements DocumentationRenderer<String>
                 if (!capability.faults().isEmpty()) {
                     out.append("- Faults: ").append(String.join(", ", capability.faults())).append('\n');
                 }
-                out.append("- Visibility: ").append(capability.visibility().name().toLowerCase()).append("\n\n");
+                out.append("- Visibility: ").append(capability.visibility().wireValue()).append("\n\n");
             }
             component.apiDocuments().forEach(api -> out.append("- Product API `").append(api.apiId()).append("`, served surfaces: ")
                     .append(api.servedSurfaces().isEmpty() ? "none" : String.join(", ", api.servedSurfaces())).append('\n'));
@@ -52,7 +52,7 @@ public final class HumanSummaryRenderer implements DocumentationRenderer<String>
         out.append("## Report\n\n| Capability | Provider | Surface | Status | Reason | Detail |\n|---|---|---|---|---|---|\n");
         for (ReportEntry entry : documentation.report().entries()) {
             out.append("| `").append(entry.capability()).append("` | ").append(entry.providerComponentUri()).append(" | ")
-                    .append(entry.surface().name().toLowerCase()).append(" | ").append(entry.status().name().toLowerCase())
+                    .append(entry.surface().wireValue()).append(" | ").append(entry.status().wireValue())
                     .append(" | ").append(entry.reason()).append(" | ").append(entry.detail() == null ? "" : escape(entry.detail()))
                     .append(" |\n");
         }

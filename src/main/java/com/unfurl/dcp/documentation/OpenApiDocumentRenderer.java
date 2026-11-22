@@ -31,6 +31,10 @@ import java.util.TreeMap;
  *       {@code 200} response is each operation's result, {@code oneOf} its success branch and the shared failure branch,
  *       or an {@code anyOf} of those results when there are several operations. {@code x-dcp-operations} maps each
  *       operation to its pair.</li>
+ *   <li><b>The registration report operation</b>, {@code GET /dcp/registrations}, in every document: every documented
+ *       component is a DCP HTTP host, and every host serves its report (G.3). Its {@code 200} response is the
+ *       renderer-written {@code dcp.registrations.report} schema; it is secured like the invocation operations and
+ *       names {@code x-dcp-permission: dcp.registrations.read} when it is.</li>
  *   <li><b>Product API operations</b> from the shipped documents, filtered to served surfaces, with their components
  *       renamed {@code <api_id>.<name>} and every reference rewritten.</li>
  *   <li><b>Hosted capabilities</b> under {@code x-dcp-hosted-capabilities}, with schemas embedded under
@@ -47,6 +51,13 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
     public static final String FAILURE = "dcp.invocation.failure";
     /** The caller context of an unprotected component's envelope. */
     public static final String CONTEXT = "dcp.invocation.context";
+    /** The registration report route every DCP HTTP host serves (HLD-C2 G.3). */
+    public static final String REGISTRATIONS_PATH = "/dcp/registrations";
+    /** The registration report schema, written once per document. */
+    public static final String REGISTRATION_REPORT = "dcp.registrations.report";
+    /** The permission the registration report needs under an identity contract (HLD-C2 G.3). */
+    public static final String REGISTRATIONS_PERMISSION = "dcp.registrations.read";
+    private static final String HASH_PATTERN = "^[0-9a-f]{64}$";
     private static final JsonNodeFactory NODES = JsonNodeFactory.instance;
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final ObjectMapper YAML = new ObjectMapper(new com.fasterxml.jackson.dataformat.yaml.YAMLFactory());
@@ -82,6 +93,14 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
             schemas.put(FAILURE, failureSchema());
             if (!secured) schemas.put(CONTEXT, contextSchema());
         }
+        // Every documented component is a DCP HTTP host, so its report route is documented here too (G.2). The
+        // capability name is reserved by claim validation; this guard keeps an unvalidated input from shadowing it.
+        if (paths.containsKey(REGISTRATIONS_PATH)) {
+            throw new DocumentationException(DocumentationException.API_DOCUMENT_PATH_CONFLICT,
+                    "capability registrations is reserved by the DCP HTTP binding for " + REGISTRATIONS_PATH);
+        }
+        paths.put(REGISTRATIONS_PATH, registrationsPathItem(secured));
+        schemas.put(REGISTRATION_REPORT, registrationReportSchema());
         for (DocumentedApi api : component.apiDocuments()) {
             mergeApi(api, secured, paths, productComponents, schemas, artifacts);
         }
@@ -173,6 +192,80 @@ public final class OpenApiDocumentRenderer implements DocumentationRenderer<Map<
         ObjectNode item = NODES.objectNode();
         item.set("post", post);
         return item;
+    }
+
+    /**
+     * The {@code GET /dcp/registrations} path item (HLD-C2 G.2, registration report operation). It is secured exactly
+     * like the component's invocation operations: under an identity contract that protects the component it needs a
+     * bearer token with {@link #REGISTRATIONS_PERMISSION}; otherwise it has no security.
+     */
+    private static ObjectNode registrationsPathItem(boolean secured) {
+        ObjectNode get = NODES.objectNode();
+        get.put("operationId", "dcp.registrations");
+        get.put("summary", "What this host has registered right now.");
+        get.put("description", "The DCP registration report (DCP HTTP Binding section 4): the host's identity and claim"
+                + " hash, every capability registered right now with its provider evidence, and the product surfaces this"
+                + " instance serves. It lists contracts only: no inputs, outputs, credentials or caller data.");
+        get.putArray("tags").add("dcp");
+        if (secured) {
+            get.putArray("security").addObject().putArray(BEARER);
+            get.put("x-dcp-permission", REGISTRATIONS_PERMISSION);
+        }
+        ObjectNode responses = get.putObject("responses");
+        ObjectNode ok = responses.putObject("200");
+        ok.put("description", "The host's current registration report.");
+        ObjectNode cacheControl = ok.putObject("headers").putObject("Cache-Control");
+        cacheControl.put("description", "Always no-store: the report states the host's registrations at this moment.");
+        cacheControl.putObject("schema").put("type", "string").put("const", "no-store");
+        ok.putObject("content").putObject("application/json").set("schema", ref(REGISTRATION_REPORT));
+        if (secured) {
+            responses.putObject("401").put("description", "Missing or invalid bearer token.");
+            responses.putObject("403").put("description", "The token lacks " + REGISTRATIONS_PERMISSION + ".");
+        }
+        ObjectNode item = NODES.objectNode();
+        item.set("get", get);
+        return item;
+    }
+
+    /**
+     * The registration report schema (HLD-C2 G.3, {@code registration-report.schema.yaml}) in JSON Schema 2020-12. It
+     * describes exactly what {@link RegistrationReportCodec} writes: snake_case fields, lower-case surfaces, and
+     * {@code path} required for an HTTP registration. Unknown fields are allowed, because readers ignore them and a
+     * newer host's report stays valid.
+     */
+    private static ObjectNode registrationReportSchema() {
+        ObjectNode report = NODES.objectNode();
+        report.put("type", "object");
+        report.put("description", "What a DCP HTTP host has registered right now (DCP HTTP Binding section 4).");
+        report.putArray("required").add("component_uri").add("component_version").add("claim_hash").add("observed_at")
+                .add("registrations").add("served_surfaces");
+        ObjectNode properties = report.putObject("properties");
+        properties.putObject("component_uri").put("type", "string").put("format", "uri");
+        properties.putObject("component_version").put("type", "string");
+        properties.putObject("claim_hash").put("type", "string").put("pattern", HASH_PATTERN);
+        properties.putObject("observed_at").put("type", "string").put("format", "date-time");
+        ObjectNode registrations = properties.putObject("registrations");
+        registrations.put("type", "array");
+        ObjectNode registration = registrations.putObject("items");
+        registration.put("type", "object");
+        registration.putArray("required").add("contract_id").add("contract_version").add("capability")
+                .add("provider_claim_uri").add("provider_claim_version").add("provider_claim_hash").add("surface");
+        ObjectNode fields = registration.putObject("properties");
+        fields.putObject("contract_id").put("type", "string").put("format", "uri");
+        fields.putObject("contract_version").put("type", "string");
+        fields.putObject("capability").put("type", "string");
+        fields.putObject("provider_claim_uri").put("type", "string").put("format", "uri");
+        fields.putObject("provider_claim_version").put("type", "string");
+        fields.putObject("provider_claim_hash").put("type", "string").put("pattern", HASH_PATTERN);
+        fields.putObject("surface").putArray("enum")
+                .add(EntrySurface.HTTP.wireValue()).add(EntrySurface.HOSTED_IN_PROCESS.wireValue());
+        fields.putObject("path").put("type", "string").put("pattern", "^/dcp/.+$");
+        registration.putObject("if").putObject("properties").putObject("surface").put("const", EntrySurface.HTTP.wireValue());
+        registration.putObject("then").putArray("required").add("path");
+        ObjectNode surfaces = properties.putObject("served_surfaces");
+        surfaces.put("type", "array");
+        surfaces.putObject("items").put("type", "string");
+        return report;
     }
 
     /** One item of {@code x-dcp-hosted-capabilities}, with its schemas embedded under a provider prefix. */

@@ -1,5 +1,8 @@
 package com.unfurl.dcp.documentation;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 import com.unfurl.dcp.runtimebinding.DeploymentKind;
 
 /**
@@ -25,5 +28,21 @@ public enum EntrySurface {
             case IN_PROCESS -> HOSTED_IN_PROCESS;
             case EXTERNAL_SAAS, WEBAPP -> EXTERNAL;
         };
+    }
+
+    /** The lower-case wire value the DCP schemas list (HLD-C2 G.2, {@link WireEnums}). */
+    @JsonValue
+    public String wireValue() {
+        return WireEnums.wire(this);
+    }
+
+    /**
+     * Factory: reads a wire value, accepting only the lower-case schema spelling.
+     *
+     * @throws IllegalArgumentException for any other value
+     */
+    @JsonCreator
+    public static EntrySurface fromWireValue(String value) {
+        return WireEnums.parse(EntrySurface.class, value);
     }
 }

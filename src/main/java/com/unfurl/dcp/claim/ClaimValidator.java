@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -91,6 +92,11 @@ public final class ClaimValidator {
         if (!semver.satisfies(offer.version(), "*")) {
             diagnostics.add(Diagnostic.error(ErrorCode.OFFER_VERSION_UNSATISFIED, "offer version must be SemVer", "offers.version"));
         }
+        // The report and the invoke paths share /dcp/, so a capability named after the report would shadow it (G.3).
+        if (RESERVED_CAPABILITIES.contains(offer.capability())) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_CAPABILITY_RESERVED, "capability " + offer.capability()
+                    + " is reserved by the DCP HTTP binding (GET <service_root>/dcp/registrations)", "offers.capability"));
+        }
         boolean negotiation = offer.offerInterface() != null && offer.offerInterface().interfaceKind() == InterfaceKind.NEGOTIATION;
         if ((offer.metered() || negotiation) && (offer.costImplications() == null || offer.costImplications().isBlank())) {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_MALFORMED, "cost_implications are required for metered or negotiation offers", "offers.cost_implications"));
@@ -98,6 +104,11 @@ public final class ClaimValidator {
         validateDocumentation(offer, diagnostics);
     }
 
+    /**
+     * Capability names the DCP HTTP binding reserves (HLD-C2 G.3): {@code registrations} is the path segment of
+     * {@code GET <service_root>/dcp/registrations}, which shares the {@code /dcp/} namespace with invocation.
+     */
+    public static final Set<String> RESERVED_CAPABILITIES = Set.of("registrations");
     /** Detail keys that earlier claims used as unenforced payload-schema hints (DCP HLD-C2 A.6). */
     private static final List<String> SCHEMA_HINT_KEYS = List.of("input_schema", "output_schema");
     /** Kebab-case identifiers, as A.13 requires for api ids and surfaces. */

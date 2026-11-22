@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -75,7 +76,14 @@ class DocumentationSupportTest {
         RegistrationReport report = world.report(HOST, List.of("ops"), "urn:c:agent", "urn:c:tool");
         assertThat(RegistrationReportCodec.decode(RegistrationReportCodec.encode(report))).isEqualTo(report);
         assertThat(new String(RegistrationReportCodec.encode(report), StandardCharsets.UTF_8))
-                .contains("\"provider_claim_hash\"", "\"served_surfaces\"", "\"HOSTED_IN_PROCESS\"");
+                .contains("\"provider_claim_hash\"", "\"served_surfaces\"", "\"surface\":\"hosted_in_process\"",
+                        "\"surface\":\"http\"")
+                .doesNotContain("HOSTED_IN_PROCESS", "\"HTTP\"", ":null");
+        // Only the schema spelling is read back: an upper-case Java constant name is a malformed report.
+        String upper = new String(RegistrationReportCodec.encode(report), StandardCharsets.UTF_8)
+                .replace("\"hosted_in_process\"", "\"HOSTED_IN_PROCESS\"");
+        assertThatThrownBy(() -> RegistrationReportCodec.decode(upper.getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(RegistrationReportCodec.RegistrationReportException.class);
         assertThatThrownBy(() -> RegistrationReportCodec.decode("{\"component_uri\":\"urn:x\"}".getBytes()))
                 .isInstanceOf(RegistrationReportCodec.RegistrationReportException.class);
         assertThatThrownBy(() -> RegistrationReportCodec.decode("not json".getBytes()))
@@ -83,6 +91,37 @@ class DocumentationSupportTest {
 
         CapabilityDocumentation docs = new DocumentationProjector().plan(world.inputs()).project(world.healthy(), T0);
         assertThat(DocumentationCodec.fromJson(DocumentationCodec.toJson(docs))).isEqualTo(docs);
+        // The projection writes the lower-case values documentation-projection.schema.yaml lists (HLD-C2 G.2), while
+        // reason codes stay upper case (G.4).
+        assertThat(new String(DocumentationCodec.toJson(docs), StandardCharsets.UTF_8))
+                .contains("\"identity\":\"absent\"", "\"surface\":\"hosted_in_process\"", "\"status\":\"active\"",
+                        "\"visibility\":\"internal\"", "\"reason\":\"ACTIVE\"")
+                .doesNotContain("\"HOSTED_IN_PROCESS\"", "\"ABSENT\"", "\"INTERNAL\"");
+    }
+
+    /**
+     * Decode errors never repeat body content (DCP HLD-C2 G.3): an unsupported enumeration value, an unparsable URI and
+     * broken record rules whose fields carry a marker are reported by rule or field location, and no cause is chained.
+     */
+    @Test
+    void decodeErrorsNeverQuoteTheBody() {
+        DocumentationWorld world = DocumentationWorld.standard();
+        String marker = "UNTRUSTED_RESPONSE_CONTENT";
+        String good = new String(RegistrationReportCodec.encode(world.report(HOST, "urn:c:agent", "urn:c:tool")), StandardCharsets.UTF_8);
+        Map<String, String> bodies = new LinkedHashMap<>();
+        bodies.put("EntrySurface", good.replace("\"hosted_in_process\"", "\"" + marker + "\""));
+        bodies.put("component_uri", good.replaceFirst("\"component_uri\":\"[^\"]*\"", "\"component_uri\":\"urn:x " + marker + " ^\""));
+        bodies.put("/dcp/<capability>", good.replace("\"path\":\"/dcp/", "\"path\":\"/dcp/" + marker));
+        bodies.put("host's own identity", good.replaceFirst("\"provider_claim_version\":\"[^\"]*\",(\"surface\":\"http\")",
+                "\"provider_claim_version\":\"9.9.9-" + marker + "\",$1"));
+        bodies.put("not a registration report", "{\"" + marker);
+
+        bodies.forEach((expected, body) -> assertThat(body).as("fixture for " + expected).contains(marker));
+        bodies.forEach((expected, body) -> assertThatThrownBy(() -> RegistrationReportCodec.decode(body.getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOfSatisfying(RegistrationReportCodec.RegistrationReportException.class, failure -> {
+                    assertThat(failure.getMessage()).as(expected).contains(expected).doesNotContain(marker);
+                    assertThat(failure.getCause()).as("no parser cause quoting the body").isNull();
+                }));
     }
 
     /** A host may not report a hosted component under its own identity, or the reverse. */

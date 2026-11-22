@@ -121,6 +121,77 @@ class OpenApiDocumentRendererTest {
         assertThat(doc.at("/components/schemas/agent.run.agent.run.envelope/properties").has("context")).isTrue();
     }
 
+    /**
+     * Every document describes {@code GET /dcp/registrations} (HLD-C2 G.2). Without identity it has no security; with an
+     * identity contract that protects the component it needs a bearer token with {@code dcp.registrations.read}.
+     */
+    @Test
+    void registrationReportRouteIsDocumentedInBothIdentityModes() {
+        Map<URI, ObjectNode> open = render(DocumentationWorld.standard(), null);
+        assertThat(open).containsKeys(HOST, FLOW);
+        for (ObjectNode doc : open.values()) {
+            JsonNode get = doc.at("/paths/~1dcp~1registrations/get");
+            assertThat(get.path("operationId").asText()).isEqualTo("dcp.registrations");
+            assertThat(get.at("/responses/200/content/application~1json/schema/$ref").asText())
+                    .isEqualTo("#/components/schemas/dcp.registrations.report");
+            assertThat(get.at("/responses/200/headers/Cache-Control/schema/const").asText()).isEqualTo("no-store");
+            assertThat(get.has("security")).isFalse();
+            assertThat(get.has("x-dcp-permission")).isFalse();
+            assertThat(get.path("responses").has("401")).isFalse();
+        }
+
+        for (ObjectNode doc : render(DocumentationWorld.standard().withIdentity(), null).values()) {
+            JsonNode get = doc.at("/paths/~1dcp~1registrations/get");
+            assertThat(get.at("/security/0").has(OpenApiDocumentRenderer.BEARER)).isTrue();
+            assertThat(get.path("x-dcp-permission").asText()).isEqualTo(OpenApiDocumentRenderer.REGISTRATIONS_PERMISSION)
+                    .isEqualTo("dcp.registrations.read");
+            assertThat(get.path("responses").has("401")).isTrue();
+            assertThat(get.path("responses").has("403")).isTrue();
+        }
+    }
+
+    /**
+     * The rendered report schema describes exactly what {@link RegistrationReportCodec} writes: a report with an HTTP
+     * and a hosted registration validates; an HTTP registration without its path, or an upper-case surface, does not.
+     */
+    @Test
+    void codecReportsValidateAgainstTheRenderedReportSchema() throws Exception {
+        DocumentationWorld world = DocumentationWorld.standard();
+        ObjectNode doc = render(world, null).get(HOST);
+        String report = new String(RegistrationReportCodec.encode(
+                world.report(HOST, List.of("ops"), "urn:c:agent", "urn:c:tool")), java.nio.charset.StandardCharsets.UTF_8);
+        String schema = OpenApiDocumentRenderer.REGISTRATION_REPORT;
+
+        assertThat(report).contains("\"surface\":\"http\"", "\"surface\":\"hosted_in_process\"").doesNotContain(":null");
+        assertThat(valid(doc, schema, report)).isTrue();
+        ObjectNode withoutPath = (ObjectNode) JSON.readTree(report);
+        withoutPath.path("registrations").forEach(registration -> {
+            if ("http".equals(registration.path("surface").asText())) ((ObjectNode) registration).remove("path");
+        });
+        assertThat(valid(doc, schema, withoutPath.toString())).as("an HTTP registration needs its path").isFalse();
+        assertThat(valid(doc, schema, report.replace("\"hosted_in_process\"", "\"HOSTED_IN_PROCESS\""))).isFalse();
+    }
+
+    /** An unvalidated capability named {@code registrations} cannot shadow the report route (G.3 reservation). */
+    @Test
+    void aCapabilityCannotShadowTheReportRoute() {
+        DocumentationWorld world = DocumentationWorld.standard();
+        DocumentationPlan plan = new DocumentationProjector().plan(world.inputs());
+        CapabilityDocumentation docs = plan.project(world.healthy(), T0);
+        List<DocumentedComponent> components = docs.components().stream().map(c -> new DocumentedComponent(c.componentUri(),
+                c.componentVersion(), c.name(), c.claimHash(), c.serviceRoot(), c.protectedComponent(),
+                c.capabilities().stream().map(k -> k.surface() != EntrySurface.HTTP ? k : new DocumentedCapability("registrations",
+                        k.capabilityVersion(), k.description(), k.contractId(), k.bindingId(), k.surface(), k.visibility(),
+                        "/dcp/registrations", k.hostedBy(), k.providerComponentUri(), k.providerComponentVersion(),
+                        k.operations(), k.faults())).toList(), c.apiDocuments())).toList();
+        CapabilityDocumentation shadowed = new CapabilityDocumentation(docs.documentId(), docs.targetEnvironment(),
+                docs.source(), docs.identity(), docs.surfaces(), components, docs.report(), docs.lifecycle());
+
+        assertThatThrownBy(() -> renderer.render(shadowed, plan.artifacts()))
+                .isInstanceOfSatisfying(DocumentationException.class, failure ->
+                        assertThat(failure.code()).isEqualTo(DocumentationException.API_DOCUMENT_PATH_CONFLICT));
+    }
+
     /** Hosted capabilities appear under x-dcp-hosted-capabilities with their own schemas, and have no path. */
     @Test
     void hostedCapabilitiesAreDocumentedFromTheirOwnClaim() {

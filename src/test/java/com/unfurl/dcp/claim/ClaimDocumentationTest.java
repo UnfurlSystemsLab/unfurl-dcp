@@ -98,6 +98,18 @@ class ClaimDocumentationTest {
         assertThat(validator.validate(claim).valid()).isTrue();
     }
 
+    /** {@code registrations} is reserved by the DCP HTTP binding (HLD-C2 G.3), so no offer may use it. */
+    @Test
+    void theRegistrationsCapabilityNameIsReserved() {
+        Offer offer = Fixtures.validProviderClaim().offers().get(0);
+        Offer reserved = new Offer("registrations", offer.description(), offer.consumerAccess(), offer.offerInterface(),
+                offer.stability(), offer.version(), offer.metered(), offer.costImplications(), offer.documentation());
+
+        assertThat(codes(validator.validate(withOffers(Fixtures.validProviderClaim(), List.of(reserved)))))
+                .contains(ErrorCode.CLAIM_CAPABILITY_RESERVED);
+        assertThat(codes(validator.validate(Fixtures.validProviderClaim()))).doesNotContain(ErrorCode.CLAIM_CAPABILITY_RESERVED);
+    }
+
     /** Documentation with no operations is incomplete. */
     @Test
     void emptyOperationsAreIncomplete() {

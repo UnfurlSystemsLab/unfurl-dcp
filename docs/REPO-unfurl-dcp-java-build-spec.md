@@ -182,7 +182,8 @@ Required rule classes include:
   hash-pinned `artifact_ref`s (HLD-C2 A.6, A.12, A.13). A claim without them keeps its canonical hash. Existing `Offer` and
   `Claim` constructors keep compiling. Both `offer_interface` and the spec's `interface` spelling deserialize.
   `input_schema` / `output_schema` detail hints without `documentation` produce the warning
-  `CLAIM_DOCUMENTATION_HINT_ONLY`.
+  `CLAIM_DOCUMENTATION_HINT_ONLY`. An offer named `registrations` is invalid (`CLAIM_CAPABILITY_RESERVED`), because
+  the DCP HTTP binding reserves `/dcp/registrations`.
 
 ### 2B) Fault Vocabulary And Propagation
 - Claims carry a first-class `faults` section declaring emitted fault codes, affected needs/offers/constraints, propagation policy, evidence, and allowed remediation actions.
@@ -261,7 +262,9 @@ Required rule classes include:
     and there is never top-level security. Without one: no scheme, plus the unauthenticated statement.
   - Both paths are golden-tested.
 - **Registration report.** `RegistrationReportCodec` is the single wire codec for `GET /dcp/registrations`, used by hosts
-  and observers alike.
+  and observers alike. Every rendered OpenAPI document describes the route, with the `dcp.registrations.report` schema
+  and, for a protected component, `bearerAuth` and `x-dcp-permission: dcp.registrations.read`. Enumerations are written
+  in their lower-case schema form, in reports and projections alike.
 - **Host view.** `HostDocumentationProjector` renders a host's own documentation from its packaged claim and artifacts,
   its local registrations, and each hosted component's verified claim and artifacts, taken from
   `HostReport.components()` (claim, pin, `PackagedResources` over the verified jar snapshot). A hosted item and a

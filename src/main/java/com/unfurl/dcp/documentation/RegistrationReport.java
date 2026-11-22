@@ -38,12 +38,12 @@ public record RegistrationReport(URI componentUri, String componentVersion, Stri
                     && !(registration.providerClaimUri().equals(componentUri)
                     && registration.providerClaimVersion().equals(componentVersion)
                     && registration.providerClaimHash().equals(claimHash))) {
-                throw new IllegalArgumentException("the HTTP registration of " + registration.contractId()
-                        + " must carry the host's own identity and claim hash");
+                // Fixed text: the contract id came from the body, and decode errors never quote it.
+                throw new WireRuleViolation("an HTTP registration must carry the host's own identity and claim hash");
             }
         }
         if (registrations.stream().map(r -> r.contractId() + "@" + r.contractVersion()).distinct().count() != registrations.size()) {
-            throw new IllegalArgumentException("a contract is registered at most once");
+            throw new WireRuleViolation("a contract is registered at most once");
         }
     }
 

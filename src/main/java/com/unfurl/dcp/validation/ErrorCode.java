@@ -34,6 +34,8 @@ public enum ErrorCode {
     CLAIM_DOCUMENTATION_OPERATION_DUPLICATE,
     CLAIM_DOCUMENTATION_MEDIA_TYPE,
     CLAIM_DOCUMENTATION_HINT_ONLY,
+    // An offer named with a capability the DCP HTTP binding reserves (HLD-C2 G.3: "registrations").
+    CLAIM_CAPABILITY_RESERVED,
     CLAIM_API_DOCUMENT_INVALID,
     ARTIFACT_REF_INVALID,
     // Shipped documentation artifacts, checked by ClaimArtifactValidator, which holds the bytes.

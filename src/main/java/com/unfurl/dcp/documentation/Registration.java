@@ -22,7 +22,10 @@ import java.util.Objects;
  */
 public record Registration(URI contractId, String contractVersion, String capability, URI providerClaimUri,
                            String providerClaimVersion, String providerClaimHash, EntrySurface surface, String path) {
-    /** Validating constructor: required fields; HTTP registrations carry their DCP path. */
+    /**
+     * Validating constructor: required fields; HTTP registrations carry their DCP path. Rule messages are fixed text
+     * ({@link WireRuleViolation}), because a decoded registration comes from an untrusted response body.
+     */
     public Registration {
         Objects.requireNonNull(contractId, "contract_id");
         Objects.requireNonNull(contractVersion, "contract_version");
@@ -32,10 +35,10 @@ public record Registration(URI contractId, String contractVersion, String capabi
         Objects.requireNonNull(providerClaimHash, "provider_claim_hash");
         Objects.requireNonNull(surface, "surface");
         if (surface == EntrySurface.EXTERNAL) {
-            throw new IllegalArgumentException("a host registers only HTTP or hosted in-process capabilities");
+            throw new WireRuleViolation("a host registers only HTTP or hosted in-process capabilities");
         }
         if (surface == EntrySurface.HTTP && (path == null || !path.equals("/dcp/" + capability))) {
-            throw new IllegalArgumentException("an HTTP registration's path is /dcp/" + capability);
+            throw new WireRuleViolation("an HTTP registration's path is /dcp/<capability>");
         }
     }
 }

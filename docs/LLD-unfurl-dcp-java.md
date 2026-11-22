@@ -411,6 +411,8 @@ or `FaultPolicy.empty()` explicitly so missing fault vocabulary is caught during
   bytes exist and match is `ClaimArtifactValidator`'s job, because only a reader holding the artifact can check it.
 - `apiDocuments`: `apiId` kebab-case and unique, `surfaces` non-empty kebab-case, `openapi` an OpenAPI media type
   (`CLAIM_API_DOCUMENT_INVALID`).
+- No offer's `capability` is `registrations`, the name the DCP HTTP binding reserves for `GET /dcp/registrations`
+  (HLD-C2 G.3, `CLAIM_CAPABILITY_RESERVED`).
 - An `offerInterface.details` that carries `input_schema` or `output_schema` keys while the offer has no
   `documentation` produces a WARNING, `CLAIM_DOCUMENTATION_HINT_ONLY`, pointing at A.6. It is a warning so existing
   claims keep loading during migration; the hint never counts as documentation.
@@ -839,6 +841,17 @@ it also reports the provider evidence it already holds: the `ProviderArtifactPin
 and version. Observers decode the body with
 `RegistrationReportCodec`; a body that does not decode is `Unreachable` with the decode error as its detail.
 
+Decode errors are content-free, because the body is an untrusted provider response and the error becomes an
+observation detail that projectors report and log. The message states a broken rule (`WireRuleViolation`, the fixed-text
+failure that the report records and `WireEnums` throw), the name of a missing required field, or the location of an
+unreadable field (`registrations[0].surface`). It never quotes a value, and it chains no parser cause, because Jackson's
+own messages quote the input.
+
+Wire enumerations (HLD-C2 G.2). `EntrySurface`, `EntryStatus`, `Visibility`, `IdentityMode` and `SurfaceKind` write
+their lower-case schema value through `@JsonValue` (`http`, `hosted_in_process`, `in_contract`, ...) and read only that
+value through `@JsonCreator`, the same pattern as `ArtifactMediaType`. `ReasonCode` stays upper case, as G.4 lists it.
+Both `RegistrationReportCodec` and `DocumentationCodec` therefore write exactly what their schemas state.
+
 #### Artifact store (Port + Adapters)
 
 ```java
@@ -1068,6 +1081,14 @@ public final class DocumentationCodec { ... }   // snake_case JSON/YAML of Capab
   - **Extensions.** `x-dcp-operations: {o: {request: <envelope ref>, response: <result ref>}}`, plus
     `x-dcp-capability`, `x-dcp-contract` and `x-dcp-faults` (the claim's faults for this offer).
   - **Transport responses:** `400`, `404` and `503`.
+- **Registration report operation.** Every document has `GET /dcp/registrations` (HLD-C2 G.2), with `operationId:
+  dcp.registrations`, tag `dcp`, and a `200` response whose schema is `dcp.registrations.report` and whose
+  `Cache-Control` header is `no-store`. The renderer writes the schema once per document from the G.3 shape:
+  - the snake_case report fields, all required as G.3 states;
+  - `claim_hash` and `provider_claim_hash` as 64 lower-case hex characters, `observed_at` as `date-time`;
+  - `surface` an `enum` of `http` and `hosted_in_process`, and `path` (`^/dcp/.+$`) required when `surface` is `http`
+    (`if`/`then`);
+  - no `additionalProperties: false`, because readers ignore unknown fields and a newer host's report stays valid.
 - **Hosted capabilities.** For each `ACTIVE` `HOSTED_IN_PROCESS` capability of the component, an item in the top-level
   `x-dcp-hosted-capabilities`, with fields `capability`, `provider_component_uri`, `provider_claim_version`,
   `description`, `faults` and `operations: [{operation, request: $ref, response: $ref}]`. Its schemas are embedded under
@@ -1093,8 +1114,9 @@ public final class DocumentationCodec { ... }   // snake_case JSON/YAML of Capab
   `RENDER_REFERENCE_UNRESOLVED` with its pointer, and nothing is served.
 - **Security is per operation** (HLD-C2 G.1). With `IdentityMode.IN_CONTRACT` and a protected component, the renderer:
   - declares `components.securitySchemes.bearerAuth` (`type: http, scheme: bearer, bearerFormat: JWT`);
-  - gives every `POST /dcp/<capability>` and every product operation marked `x-dcp-access: protected`
-    `security: [{bearerAuth: []}]` plus `401`/`403`;
+  - gives every `POST /dcp/<capability>`, `GET /dcp/registrations` and every product operation marked
+    `x-dcp-access: protected` `security: [{bearerAuth: []}]` plus `401`/`403`;
+  - gives `GET /dcp/registrations` `x-dcp-permission: dcp.registrations.read`;
   - gives every operation marked `x-dcp-access: public` `security: []`;
   - copies `x-dcp-permission` through.
 
@@ -2217,12 +2239,18 @@ Unit tests:
   - **per-operation security:** with identity, a protected component's public operations render `security: []` and
     its protected ones `bearerAuth` plus 401/403. An unprotected component has none. There is never top-level security.
     A missing `x-dcp-access` is rejected;
-  - the codec round-trips reports and projections.
+  - **registration report operation:** every document, with and without identity, has `GET /dcp/registrations`; it
+    carries `bearerAuth`, `x-dcp-permission: dcp.registrations.read` and 401/403 exactly when the component is
+    protected under an identity contract; a report written by `RegistrationReportCodec` (one HTTP and one hosted
+    registration) validates against `dcp.registrations.report`, and an HTTP registration without `path` does not;
+  - the codec round-trips reports and projections, and writes lower-case enumerations (`hosted_in_process`,
+    `in_contract`), never the Java constant names.
 - Claim documentation fields:
   - `Offer`/`Claim` compatibility constructors;
   - a claim without the new fields keeps its pre-change canonical hash (golden hash of an existing claim);
   - `ArtifactRef` path and hash shape rules;
   - `CLAIM_DOCUMENTATION_HINT_ONLY` is a warning, not an error;
+  - an offer named `registrations` is `CLAIM_CAPABILITY_RESERVED`;
   - `@JsonAlias` reads both `offer_interface` and `interface`.
 - `RuntimeBindingValidator` rejects an HTTP-kind `baseUrl` without the `/dcp/<capability>` suffix
   (`RUNTIME_BINDING_ENDPOINT_SHAPE`).
