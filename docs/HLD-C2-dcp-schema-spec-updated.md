@@ -343,17 +343,17 @@ parent claims.
 faults:
   emitted:                  # list, may be empty
     - code: string          # required, stable machine code, e.g. storage.timeout
-      category: enum[dependency, capability, constraint, health, security, policy, runtime]
-      severity: enum[info, warning, degraded, critical, blocking]
+      category: enum[DEPENDENCY, CAPABILITY, CONSTRAINT, HEALTH, SECURITY, POLICY, RUNTIME]
+      severity: enum[INFO, WARNING, DEGRADED, CRITICAL, BLOCKING]
       description: string   # required
       affects:
         needs: list<string>        # declared needs affected by this fault
         offers: list<string>       # declared offers/capabilities affected by this fault
         constraints: list<string>  # declared constraints affected by this fault
       evidence:
-        signals: list<enum[health, invocation_error, metric_threshold, policy_denial, contract_invalidation, external_event]>
+        signals: list<enum[HEALTH, INVOCATION_ERROR, METRIC_THRESHOLD, POLICY_DENIAL, CONTRACT_INVALIDATION, EXTERNAL_EVENT]>
       propagation:
-        parent_impact: enum[none, degraded, blocked]
+        parent_impact: enum[NONE, DEGRADED, BLOCKED]
         propagates_when: string    # required when parent_impact != none
         suppresses_when: string?   # optional suppression condition
       remediation:
@@ -362,6 +362,8 @@ faults:
 
 Rules:
 - `faults` MUST be present even when `emitted` is empty. Product examples may use `faults: { emitted: [] }`.
+- **Wire values.** Enum values are written upper case, as every DCP enum is (A.9); field names are snake_case.
+- `code`, `category`, `severity` and `description` are required, and a `code` is unique within the claim.
 - A declared fault MUST affect at least one need, offer, or constraint.
 - `parent_impact != none` requires `propagates_when`; this is the deterministic gate condition a runtime or parent
   resolver evaluates before escalating the child fault upward.
@@ -380,8 +382,8 @@ fault_signal:
   binding_id: uri?
   capability: string?
   code: string
-  category: enum[dependency, capability, constraint, health, security, policy, runtime]
-  severity: enum[info, warning, degraded, critical, blocking]
+  category: enum[DEPENDENCY, CAPABILITY, CONSTRAINT, HEALTH, SECURITY, POLICY, RUNTIME]
+  severity: enum[INFO, WARNING, DEGRADED, CRITICAL, BLOCKING]
   observed_at: timestamp
   affected_needs: list<string>
   affected_offers: list<string>
@@ -1365,7 +1367,7 @@ reports anything else as a diagnostic. Studio shows the affected content as unav
 | 2 | Runtime binding | §C: `target_environment`, `provider_instance`, `runtime_policy` (with retry, circuit-breaker, rate-limit and bulkhead refs), `deployment_controls` | `runtime-binding.schema.yaml`: `providers[].transport`, `secret_refs`, `ports`, `verification` | `runtimebinding/RuntimePolicy` has only `enabled`, `timeoutMs`, `telemetryNamespace`, `auditEnabled` | Substrate & Topology bindings, Resilience & Faults policy refs |
 | 3 | Dependencies | A.5: `required`, `recommended`, `forbidden` | `claim.schema.yaml` `dependencies` | `claim/Dependencies`: string lists `needs` and `optional`, with `?owner=` and `?substrate=` qualifiers | Typed external owners in Flow & Composition |
 | 4 | Integration ports | A.9: typed `authentication`, `authorization`, `telemetry`, `monitoring`, `ai` | `claim.schema.yaml` `integration_ports` | **Resolved 2026-11-25.** `claim/IntegrationPorts` types the five A.9 ports and keeps `ports` as the opaque wiring map every existing claim uses (A.9 rules); claims that declare only `ports` keep their claim hash | (was Runtime & Telemetry; Security & Trust authentication and authorization) |
-| 5 | Faults | A.10: `propagation.parent_impact`, `propagates_when`, `remediation.allowed_actions` | `fault.schema.yaml`: `propagation.default_action`, `remediation.boundary` | `fault/FaultPropagation` follows A.10 | Resilience & Faults |
+| 5 | Faults | A.10: `propagation.parent_impact`, `propagates_when`, `remediation.allowed_actions` | **Resolved 2026-11-26.** `fault.schema.yaml`, `claim.schema.yaml`, `DCP-FAULTS.md`, `elements/faults.md` and the examples follow A.10; the schema's former `default_action`, `parent_visible_when`, `remediation.boundary` and `{kind, name}` affects are dropped, and A.10's block now writes the upper-case wire values the codecs read | `fault/*` and `ClaimValidator` follow A.10; unchanged, so no claim hash moved | (was Resilience & Faults) |
 | 6 | This document itself | **Resolved 2026-11-25:** this copy is authoritative; `dcp/docs/HLD-C2-dcp-schema-spec-updated.md` points here | n/a | n/a | (was every row above) |
 
 **Fields DCP does not define yet:**
