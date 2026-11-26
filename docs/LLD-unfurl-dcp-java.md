@@ -337,6 +337,28 @@ public enum Authority { EXCLUSIVE, CONSULTED, ADVISORY }
 
 public record Refusal(@NotBlank String concern, @NotBlank String rationale, String ownedBy) { ... }
 
+// HLD-C2 A.9: the component's own wiring map, opaque to DCP, plus the typed integration surfaces. Each typed port is
+// null when the claim does not declare it; null ports are not serialized, so a wiring-only claim keeps its hash.
+public record IntegrationPorts(
+        Map<String, Object> ports,                       // deep-frozen; never interpreted
+        AuthenticationPort authentication, AuthorizationPort authorization,
+        TelemetryPort telemetry, MonitoringPort monitoring, AiPort ai
+) { ... }
+// Each typed port keeps presence: wrappers and nullable lists, so a member the claim did not write stays null and the
+// validator can refuse a missing required one (HLD-C2 A.9 "A declared port is complete"); nothing is defaulted.
+public record AuthenticationPort(Boolean required, List<AuthenticationMode> acceptedModes, String notes) { ... }
+public enum AuthenticationMode { JWT, OIDC, API_KEY, MTLS, SESSION_COOKIE }
+public record AuthorizationPort(Boolean required, DecisionOwner decisionOwner, List<String> permissionPrefixes, String notes) { ... }
+public enum DecisionOwner { SELF, EXTERNAL_POLICY, HOST_APPLICATION, NOT_APPLICABLE }
+public record TelemetryPort(Boolean required, List<TelemetrySignal> signals, Boolean correlationIdRequired, String notes) { ... }
+public enum TelemetrySignal { LOGS, METRICS, TRACES, AUDIT_EVENTS }
+public record MonitoringPort(Boolean required, List<String> healthEndpoints, Boolean readinessRequired,
+        Boolean livenessRequired, String notes) { ... }          // endpoints are absolute paths
+public record AiPort(Boolean required, List<String> intents, ModelAccess modelAccess, Boolean costMetered, String notes) { ... }
+public enum ModelAccess { NONE, EXTERNAL_PROVIDER, EMBEDDED_MODEL, HOST_PROVIDED }
+// ClaimValidator: CLAIM_INTEGRATION_PORT_INVALID for a missing required member of a declared port, a health endpoint
+// that is not an absolute path, or a list that repeats an entry. An unknown enum value fails when the claim is read.
+
 public record Offer(
         @NotBlank String capability, @NotBlank String description,
         ConsumerAccess consumerAccess, OfferInterface offerInterface,
