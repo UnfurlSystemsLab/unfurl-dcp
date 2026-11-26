@@ -72,6 +72,7 @@ public final class ClaimValidator {
         }
         validateApiDocuments(claim.apiDocuments(), diagnostics);
         validateDependencies(claim.dependencies(), diagnostics);
+        validateIntegrationPorts(claim.integrationPorts(), diagnostics);
         validateFaults(claim, diagnostics);
         for (Refusal refusal : claim.refusals()) {
             if ("everything-else".equalsIgnoreCase(refusal.concern()) || refusal.rationale() == null || refusal.rationale().length() < 12) {
@@ -79,6 +80,81 @@ public final class ClaimValidator {
             }
         }
         return new SchemaValidationReport(diagnostics);
+    }
+
+    /**
+     * Helper: validates the typed integration ports against their HLD-C2 A.9 rules. The wiring map ({@code ports}) is
+     * opaque to DCP and is not checked, and an absent typed port is simply not declared. Enum values are checked by the
+     * codec when the claim is read.
+     * <ul>
+     *   <li>a declared port is complete: each member written without {@code ?} in HLD-C2 A.9 is present, never
+     *       defaulted ("A declared port is complete");</li>
+     *   <li>each {@code monitoring.health_endpoints} entry is an absolute path (starts with {@code /}, no scheme, host
+     *       or query): the host and port are deployment facts (§C);</li>
+     *   <li>no list repeats an entry.</li>
+     * </ul>
+     */
+    private void validateIntegrationPorts(IntegrationPorts ports, List<Diagnostic> diagnostics) {
+        if (ports == null) {
+            return;
+        }
+        String base = "integration_ports.";
+        if (ports.authentication() != null) {
+            AuthenticationPort port = ports.authentication();
+            requirePresent(port.required(), base + "authentication.required", diagnostics);
+            requirePresent(port.acceptedModes(), base + "authentication.accepted_modes", diagnostics);
+            requireDistinct(port.acceptedModes(), base + "authentication.accepted_modes", diagnostics);
+        }
+        if (ports.authorization() != null) {
+            AuthorizationPort port = ports.authorization();
+            requirePresent(port.required(), base + "authorization.required", diagnostics);
+            requirePresent(port.decisionOwner(), base + "authorization.decision_owner", diagnostics);
+            requireDistinct(port.permissionPrefixes(), base + "authorization.permission_prefixes", diagnostics);
+        }
+        if (ports.telemetry() != null) {
+            TelemetryPort port = ports.telemetry();
+            requirePresent(port.required(), base + "telemetry.required", diagnostics);
+            requirePresent(port.signals(), base + "telemetry.signals", diagnostics);
+            requirePresent(port.correlationIdRequired(), base + "telemetry.correlation_id_required", diagnostics);
+            requireDistinct(port.signals(), base + "telemetry.signals", diagnostics);
+        }
+        if (ports.monitoring() != null) {
+            MonitoringPort port = ports.monitoring();
+            requirePresent(port.required(), base + "monitoring.required", diagnostics);
+            requirePresent(port.readinessRequired(), base + "monitoring.readiness_required", diagnostics);
+            requirePresent(port.livenessRequired(), base + "monitoring.liveness_required", diagnostics);
+            if (port.healthEndpoints() != null) {
+                for (String endpoint : port.healthEndpoints()) {
+                    if (endpoint == null || endpoint.isBlank() || !endpoint.startsWith("/") || endpoint.startsWith("//")
+                            || endpoint.contains("?") || endpoint.contains("#")) {
+                        diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_INTEGRATION_PORT_INVALID, "health endpoint '"
+                                + endpoint + "' must be an absolute path such as /health, never a URL",
+                                base + "monitoring.health_endpoints"));
+                    }
+                }
+            }
+            requireDistinct(port.healthEndpoints(), base + "monitoring.health_endpoints", diagnostics);
+        }
+        if (ports.ai() != null) {
+            AiPort port = ports.ai();
+            requirePresent(port.required(), base + "ai.required", diagnostics);
+            requireDistinct(port.intents(), base + "ai.intents", diagnostics);
+        }
+    }
+
+    /** Helper: reports a required member of a declared port that the claim did not write (HLD-C2 A.9). */
+    private static void requirePresent(Object value, String path, List<Diagnostic> diagnostics) {
+        if (value == null) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_INTEGRATION_PORT_INVALID,
+                    path + " is required in a declared port; it is never defaulted", path));
+        }
+    }
+
+    /** Helper: reports a present list that repeats an entry. */
+    private static void requireDistinct(List<?> values, String path, List<Diagnostic> diagnostics) {
+        if (values != null && new HashSet<>(values).size() != values.size()) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_INTEGRATION_PORT_INVALID, "entries must not repeat", path));
+        }
     }
 
     /**

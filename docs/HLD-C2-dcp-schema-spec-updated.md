@@ -2,6 +2,8 @@
 
 **Document status:** Concrete schema specification. Downstream of HLD-C (DCP v0.2 internal). 
 **Audience:** Internal. The field-by-field definition that `unfurl-dcp` implements and validates against.
+**Authority:** This copy is the authoritative DCP schema specification (decided 2026-11-25, §I.1 divergence #6).
+`dcp/docs/HLD-C2-dcp-schema-spec-updated.md` points here; a schema change is made here and nowhere else.
 **Decisions inherited as settled (from HLD-C §11, resolved):**
 1. **state/decisions fold under each concern** — no separate `state_owned`/`decisions_owned` top-level lists.
 2. **Invalidation:** hard-fail at runtime, re-negotiate at design-time. No runtime self-heal.
@@ -272,6 +274,9 @@ Rules:
 
 ```yaml
 integration_ports:
+  ports: map<string, any>?          # the component's own named port wiring (for example Foundry's runtime ports,
+                                    # name -> Java type); opaque to DCP, see the rules below
+
   authentication:
     required: bool                  # does this component require an authenticated caller?
     accepted_modes: list<enum[jwt, oidc, api_key, mtls, session_cookie]>
@@ -305,6 +310,24 @@ integration_ports:
 ```
 
 Rules:
+- **Two kinds of entry.** `ports` is the component's own named wiring, for example the runtime ports a host binds
+  (name to implementation type). DCP carries it unchanged and never interprets it: it is not an integration surface, no
+  planner matches on it, and no view projects it. The other five entries are the typed integration surfaces below.
+- **Absent means not declared.** Each typed port is optional. An absent port says the claim does not declare that
+  surface; it is never read as `required: false` or as an empty list, and a reader never fills one in.
+- **A declared port is complete.** Within a declared port, every member written without `?` is required: `required`
+  in all five; `accepted_modes` in `authentication`; `decision_owner` in `authorization`; `signals` and
+  `correlation_id_required` in `telemetry`; `readiness_required` and `liveness_required` in `monitoring`. A missing
+  one makes the claim invalid (`CLAIM_INTEGRATION_PORT_INVALID`, naming the member), and is never defaulted. An empty
+  list is a value (for example `accepted_modes: []`), distinct from an absent one. Optional members (`?`) stay absent
+  when not written.
+- **Wire values.** Enum values are written upper case on the wire, as every DCP enum is in the `unfurl-dcp` codecs (for
+  example `JWT`, `AUDIT_EVENTS`, `EXTERNAL_POLICY`). Field names are snake_case.
+- **Monitoring.** Each `health_endpoints` entry is an absolute path the component serves (`/health`, `/health/ready`),
+  never a URL: the host and port are deployment facts (§C). `readiness_required` and `liveness_required` say whether
+  the component serves a readiness or liveness check a deployment must use.
+- **Telemetry.** `signals` lists only what the component really emits. `correlation_id_required` is true when the
+  component refuses or cannot trace a call without a correlation id.
 - `authentication`, `authorization`, `telemetry`, and `monitoring` are integration surfaces, not intelligence markers.
 - `ai.required == true` means the component requires AI capability to operate; it does not automatically mean the component can negotiate its own boundaries.
 - If `identity.kind == intelligent_component`, the claim MUST still provide `negotiation_surface`.
@@ -581,6 +604,8 @@ runtime_binding:
   configuration:                  # optional, non-secret config values or references
     values: map<string, any>?
     config_refs: map<string, config_ref>?
+    secret_refs: map<string, secret_ref>?   # secret:// references only, never inline secrets; e.g. an identity
+                                            # binding's per-service client credentials, keyed by service claim URI
 
   deployment_controls:            # optional
     rollout_strategy: enum[manual, automatic, canary, blue_green]?
@@ -1323,6 +1348,33 @@ Cross-schema:
 - **Invocation envelope naming** (G.3) — the HTTP envelope keeps its deployed camelCase wire names. Moving it to
   snake_case is a breaking wire change for every DCP HTTP host and needs a versioned transition, so it is not part of
   this draft.
+
+### I.1 Known divergences and Studio-blocking gaps
+
+This register records the places where the DCP sources disagree, and the fields DCP does not define yet, that block
+the views and perspective overlays in `unfurl-ui/docs/LLD-studio-viewpoints-and-perspectives.md`. Each one is resolved
+by its own DCP design change, made here first. Until then, Fabric projects only the shape this document defines and
+reports anything else as a diagnostic. Studio shows the affected content as unavailable, never approximated.
+
+**Divergences.** The three sources are this document, the YAML schemas in `dcp/docs/schemas/`, and the Java model in
+`unfurl-dcp/src/main/java/com/unfurl/dcp/`.
+
+| # | Area | This document | Schema YAML | Java model | Blocks |
+|---|---|---|---|---|---|
+| 1 | Composition contract | §B: `parties`, `binding`, `data_mapping`, `transport`, `expectations`, `provenance`, `trust`, `invalidation` | `contract.schema.yaml`: `participants`, `accepted_bindings`, `policy_context`, `signatures` | `contract/CompositionContract` follows §B; no `policy_context` or `signatures` | Data & State mappings, Substrate & Topology transport, Compliance & Governance policy context |
+| 2 | Runtime binding | §C: `target_environment`, `provider_instance`, `runtime_policy` (with retry, circuit-breaker, rate-limit and bulkhead refs), `deployment_controls` | `runtime-binding.schema.yaml`: `providers[].transport`, `secret_refs`, `ports`, `verification` | `runtimebinding/RuntimePolicy` has only `enabled`, `timeoutMs`, `telemetryNamespace`, `auditEnabled` | Substrate & Topology bindings, Resilience & Faults policy refs |
+| 3 | Dependencies | A.5: `required`, `recommended`, `forbidden` | `claim.schema.yaml` `dependencies` | `claim/Dependencies`: string lists `needs` and `optional`, with `?owner=` and `?substrate=` qualifiers | Typed external owners in Flow & Composition |
+| 4 | Integration ports | A.9: typed `authentication`, `authorization`, `telemetry`, `monitoring`, `ai` | `claim.schema.yaml` `integration_ports` | **Resolved 2026-11-25.** `claim/IntegrationPorts` types the five A.9 ports and keeps `ports` as the opaque wiring map every existing claim uses (A.9 rules); claims that declare only `ports` keep their claim hash | (was Runtime & Telemetry; Security & Trust authentication and authorization) |
+| 5 | Faults | A.10: `propagation.parent_impact`, `propagates_when`, `remediation.allowed_actions` | `fault.schema.yaml`: `propagation.default_action`, `remediation.boundary` | `fault/FaultPropagation` follows A.10 | Resilience & Faults |
+| 6 | This document itself | **Resolved 2026-11-25:** this copy is authoritative; `dcp/docs/HLD-C2-dcp-schema-spec-updated.md` points here | n/a | n/a | (was every row above) |
+
+**Fields DCP does not define yet:**
+
+| Gap | Today | Blocks |
+|---|---|---|
+| Residency and region constraints on a claim or on needs | Only `runtime_binding.target_environment.region` (§C), an environment fact rather than a constraint | Compliance & Governance residency |
+| Concurrency semantics (instance model, for example single instance vs horizontally scalable; ordering and delivery guarantees) | Only contract `expectations.idempotent`, `async`, `correlation_id_required` (§B) | Substrate & Topology concurrency badges |
+| Quantities with units and canonical normalization (throughput, latency, memory, CPU) | Only `expectations.timeout_ms` and free-text `cost_implications` | Performance & Load envelopes; Substrate & Topology resource budgets |
 
 ---
 

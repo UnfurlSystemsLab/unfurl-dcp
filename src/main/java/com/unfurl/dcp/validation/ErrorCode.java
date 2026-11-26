@@ -36,6 +36,8 @@ public enum ErrorCode {
     CLAIM_DOCUMENTATION_HINT_ONLY,
     /** An external_protocol offer without a non-blank details.protocol, or with documentation (HLD-C2 A.6). */
     CLAIM_EXTERNAL_PROTOCOL_INVALID,
+    /** A typed integration port outside its HLD-C2 A.9 rules: a missing required member, a non-absolute health endpoint, or a repeated entry. */
+    CLAIM_INTEGRATION_PORT_INVALID,
     // An offer named with a capability the DCP HTTP binding reserves (HLD-C2 G.3: "registrations").
     CLAIM_CAPABILITY_RESERVED,
     CLAIM_API_DOCUMENT_INVALID,
