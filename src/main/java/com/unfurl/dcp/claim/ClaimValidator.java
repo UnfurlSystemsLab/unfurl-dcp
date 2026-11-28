@@ -7,7 +7,9 @@ import com.unfurl.dcp.versioning.SemverHelpers;
 import com.unfurl.dcp.fault.FaultDeclaration;
 import com.unfurl.dcp.fault.ParentImpact;
 
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -71,6 +73,7 @@ public final class ClaimValidator {
             validateOffer(offer, diagnostics);
         }
         validateApiDocuments(claim.apiDocuments(), diagnostics);
+        validateChildClaims(claim, diagnostics);
         validateDependencies(claim.dependencies(), diagnostics);
         validateIntegrationPorts(claim.integrationPorts(), diagnostics);
         validateFaults(claim, diagnostics);
@@ -267,6 +270,51 @@ public final class ClaimValidator {
             diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_DOCUMENTATION_MEDIA_TYPE, "payload schemas must be "
                     + ArtifactMediaType.SCHEMA_JSON.wireValue() + ", not " + ref.mediaType().wireValue(), at));
         }
+    }
+
+    /**
+     * Helper: validates an aggregate's {@code child_claims} (DCP HLD-C2 A.14). Each entry names a child by
+     * {@code claim_uri}, unique and never the claim's own identity, and always writes {@code required}. A claim declares
+     * its children in one place, so {@code child_claims} together with the containment bridge in
+     * {@code metadata.extensions} is refused.
+     */
+    private void validateChildClaims(Claim claim, List<Diagnostic> diagnostics) {
+        if (claim.childClaims().isEmpty()) {
+            return;
+        }
+        URI own = claim.identity() == null ? null : claim.identity().uri();
+        HashSet<URI> seen = new HashSet<>();
+        for (int index = 0; index < claim.childClaims().size(); index++) {
+            ChildClaim child = claim.childClaims().get(index);
+            String at = "child_claims[" + index + "]";
+            if (child == null || child.claimUri() == null || child.claimUri().toString().isBlank()) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_CHILD_CLAIM_INVALID, "claim_uri is required", at + ".claim_uri"));
+                continue;
+            }
+            if (child.claimUri().equals(own)) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_CHILD_CLAIM_INVALID,
+                        "an aggregate cannot contain itself: " + child.claimUri(), at + ".claim_uri"));
+            } else if (!seen.add(child.claimUri())) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_CHILD_CLAIM_INVALID,
+                        "child " + child.claimUri() + " is declared twice", at + ".claim_uri"));
+            }
+            if (child.required() == null) {
+                diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_CHILD_CLAIM_INVALID,
+                        "required must be written: there is no default", at + ".required"));
+            }
+        }
+        if (claim.metadata() != null && ClaimMetadata.CONTAINMENT_BRIDGE_KEYS.stream()
+                .anyMatch(key -> hasEntries(claim.metadata().extensions().get(key)))) {
+            diagnostics.add(Diagnostic.error(ErrorCode.CLAIM_CHILD_CLAIM_INVALID,
+                    "declare the children in child_claims or in the metadata.extensions containment bridge, not both",
+                    "child_claims"));
+        }
+    }
+
+    /** Whether a containment-bridge value names at least one child. */
+    private static boolean hasEntries(Object value) {
+        return value instanceof Collection<?> collection ? !collection.isEmpty()
+                : value instanceof String text && !text.isBlank();
     }
 
     /**

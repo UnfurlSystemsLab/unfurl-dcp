@@ -41,6 +41,8 @@ public enum ErrorCode {
     // An offer named with a capability the DCP HTTP binding reserves (HLD-C2 G.3: "registrations").
     CLAIM_CAPABILITY_RESERVED,
     CLAIM_API_DOCUMENT_INVALID,
+    /** An aggregate's {@code child_claims} entry breaks a DCP HLD-C2 A.14 rule. */
+    CLAIM_CHILD_CLAIM_INVALID,
     ARTIFACT_REF_INVALID,
     // Shipped documentation artifacts, checked by ClaimArtifactValidator, which holds the bytes.
     ARTIFACT_UNAVAILABLE,

@@ -55,6 +55,7 @@ integration_ports:   # A.9  optional standard ports exposed/required by the comp
 faults:              # A.10 required, may be empty; declared runtime fault vocabulary
 metadata:            # A.11 required
 api_documents:       # A.13 optional; product HTTP API documents shipped with the component
+child_claims:        # A.14 optional; the components an aggregate component is built from
 ```
 
 `artifact_ref` (A.12) is a shared value type used by `offers[].documentation` and `api_documents`; it is not a
@@ -488,6 +489,45 @@ Rules:
 - Child and referenced DCPs: a child's `api_documents` describe only that child. A parent claim never re-exports a
   child's documents.
 
+### A.14 child_claims (optional) — aggregate components
+
+An **aggregate** is a component built from other components, for example a product runtime built from substrate
+modules. `child_claims` names those components. Each child is a normal component, with its own claim, artifact, offers,
+needs and faults.
+
+```yaml
+child_claims:
+  - claim_uri:   uri       # required; the child's identity.uri
+    required:    bool      # required, no default; true when the aggregate cannot run without this child
+    description: string?   # optional; the child's role in the aggregate
+```
+
+Rules:
+- `claim_uri` is unique within the list and is never the aggregate's own `identity.uri`. `required` is always written.
+  A violation is `CLAIM_CHILD_CLAIM_INVALID` naming the entry (`child_claims[<index>]`).
+- **A required child must be in the composition.** A composition that selects the aggregate must also select every
+  required child, a component whose `identity.uri` is the child's `claim_uri`. Otherwise the composer refuses it,
+  naming the aggregate and the missing child. This is a validity gate, never a score.
+- **An optional child may be absent.** The aggregate runs without it. When it is absent, neither it nor its artifact is
+  part of the composition.
+- **Children never form a cycle.** Across the claims a composition selects, no claim may be its own descendant through
+  `child_claims`, whether the references are required or optional. For example, A naming B while B names A is a
+  cycle. A single claim cannot show this, so the composer refuses such a composition and names every claim in the
+  cycle.
+- **The children are the aggregate's declared containment.** A projection draws each selected child under its aggregate.
+  This is the relationship the containment bridge (`metadata.extensions.contains`, `children`, `containsClaimUris`,
+  `childClaimUris`) expresses for claims written before this section.
+  - A claim declares its children in one place: `child_claims`, or the bridge, never both. Both present is
+    `CLAIM_CHILD_CLAIM_INVALID`.
+  - Contracts (B) and runtime bindings (C) keep the bridge for their own trees.
+- **A child's claim stays its own.** The aggregate never restates or re-exports a child's offers, needs, faults or
+  documents. Its own `offers` are what the aggregate itself provides.
+- **Versions are pinned where every claim is pinned:** in the composition's contracts (`parties.*.claim_version`, B).
+  `child_claims` names the child by identity only.
+- **Canonical hash.** `child_claims` is part of the claim and of its canonical hash (`ClaimHash`). Its list order is part
+  of the claim, as for `offers`. A claim without `child_claims` serializes exactly as before, so no existing claim hash
+  moves.
+
 ---
 
 ## B. Composition Contract Schema
@@ -551,7 +591,7 @@ contract:
 ```
 
 Rules:
-- Aggregate contracts use the same DCP containment bridge as aggregate claims. A parent contract references child contracts with `metadata.extensions.contains`, `children`, `containsClaimUris`, or `childClaimUris`; each child remains a normal composition contract with its own parties, binding, transport, expectations, provenance, trust, and invalidation.
+- Aggregate contracts use the DCP containment bridge, the relationship aggregate claims declare with `child_claims` (A.14). A parent contract references child contracts with `metadata.extensions.contains`, `children`, `containsClaimUris`, or `childClaimUris`; each child remains a normal composition contract with its own parties, binding, transport, expectations, provenance, trust, and invalidation.
 - Assembly compilers MUST NOT represent child contract closure only as private planner metadata. A deployable multi-component contract is a DCP contract tree: aggregate parent contract plus referenced child contracts.
 - `parties.*.claim_version` are PINNED. If either changes, the contract is invalidated and must be re-negotiated at design-time.
 - `transport.kind == in_process` is valid ONLY when the parties are co-packaged into one deployable. Fabric sets this at packaging time.
@@ -650,7 +690,7 @@ Rules:
 - A binding that needs an endpoint and has none is incomplete. Documentation projection (G) uses the binding as its
   only endpoint source; endpoints taken from environment variables, profiles, DNS or orchestrator lookups, or network
   probing are not DCP state and are never documented.
-- Aggregate runtime bindings use the same DCP containment bridge as aggregate claims. Parent bindings reference child runtime bindings with `metadata.extensions.contains`, `children`, `containsClaimUris`, or `childClaimUris`; child bindings remain normal runtime bindings with their own contract pins, endpoint/config refs, secret refs, and runtime policy.
+- Aggregate runtime bindings use the DCP containment bridge, the relationship aggregate claims declare with `child_claims` (A.14). Parent bindings reference child runtime bindings with `metadata.extensions.contains`, `children`, `containsClaimUris`, or `childClaimUris`; child bindings remain normal runtime bindings with their own contract pins, endpoint/config refs, secret refs, and runtime policy.
 - Assembly-level products MUST NOT introduce product-specific runtime wiring sections for child bindings. A multi-component deployment is represented as a DCP runtime-binding tree: one aggregate parent binding plus referenced child bindings, all resolved by walking the DCP containment refs.
 
 Example:
@@ -1291,6 +1331,8 @@ with `DOCUMENTATION_GAP`, naming every gap.
 Claim:
 - All required sections present; `refusals` and `boundary_principles` non-empty.
 - `faults` present; every declared fault affects at least one need, offer, or constraint.
+- `child_claims`, when present: each entry names a `claim_uri` and writes `required`; no `claim_uri` twice or equal to
+  the claim's own `identity.uri`; not together with the containment bridge (A.14).
 - Faults with parent impact require a propagation condition.
 - `kind == intelligent_component` => `negotiation_surface` present.
 - Concern identifiers unique within the claim.
@@ -1369,6 +1411,7 @@ reports anything else as a diagnostic. Studio shows the affected content as unav
 | 4 | Integration ports | A.9: typed `authentication`, `authorization`, `telemetry`, `monitoring`, `ai` | `claim.schema.yaml` `integration_ports` | **Resolved 2026-11-25.** `claim/IntegrationPorts` types the five A.9 ports and keeps `ports` as the opaque wiring map every existing claim uses (A.9 rules); claims that declare only `ports` keep their claim hash | (was Runtime & Telemetry; Security & Trust authentication and authorization) |
 | 5 | Faults | A.10: `propagation.parent_impact`, `propagates_when`, `remediation.allowed_actions` | **Resolved 2026-11-26.** `fault.schema.yaml`, `claim.schema.yaml`, `DCP-FAULTS.md`, `elements/faults.md` and the examples follow A.10; the schema's former `default_action`, `parent_visible_when`, `remediation.boundary` and `{kind, name}` affects are dropped, and A.10's block now writes the upper-case wire values the codecs read | `fault/*` and `ClaimValidator` follow A.10; unchanged, so no claim hash moved | (was Resilience & Faults) |
 | 6 | This document itself | **Resolved 2026-11-25:** this copy is authoritative; `dcp/docs/HLD-C2-dcp-schema-spec-updated.md` points here | n/a | n/a | (was every row above) |
+| 7 | Aggregate claims | A.14 `child_claims: [{claim_uri, required, description?}]` | **Resolved 2026-11-27.** `claim.schema.yaml` and `examples/aggregate-dcp.yaml` follow A.14; the example's former `role` is its `description` | `claim/ChildClaim` and `Claim.childClaims` follow A.14; `ClaimValidator` checks the rules; `DcpProjectionProjector` reads `child_claims` before the bridge | (was containment of aggregate components) |
 
 **Fields DCP does not define yet:**
 
