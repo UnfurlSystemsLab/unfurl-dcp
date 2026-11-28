@@ -105,12 +105,17 @@ public final class DcpProjectionProjector {
         return depth == 0 ? "ROOT" : childClaimUris(claim).isEmpty() ? "LEAF" : "AGGREGATE";
     }
 
+    /**
+     * A claim's declared children: its {@code child_claims} (DCP HLD-C2 A.14), or for a claim written before them, the
+     * containment bridge in {@code metadata.extensions}. A valid claim never declares both.
+     */
     private static List<URI> childClaimUris(Claim claim) {
+        LinkedHashSet<URI> result = new LinkedHashSet<>();
+        claim.childClaims().forEach(child -> { if (child.claimUri() != null) result.add(child.claimUri()); });
         if (claim.metadata() == null) {
-            return List.of();
+            return result.stream().sorted(Comparator.comparing(URI::toString)).toList();
         }
         Map<String, Object> extensions = claim.metadata().extensions();
-        LinkedHashSet<URI> result = new LinkedHashSet<>();
         addUris(result, extensions.get(EXT_CONTAINS));
         addUris(result, extensions.get(EXT_CHILDREN));
         addUris(result, extensions.get(EXT_CONTAINS_CLAIM_URIS));
